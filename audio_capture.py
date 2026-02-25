@@ -39,6 +39,7 @@ def list_audio_devices(p: pyaudio.PyAudio = None) -> list[dict]:
                 "index": i,
                 "name": info.get("name", "Unknown"),
                 "channels": int(info.get("maxInputChannels", 0)),
+                "output_channels": int(info.get("maxOutputChannels", 0)),
                 "sample_rate": int(info.get("defaultSampleRate", 0)),
                 "is_loopback": info.get("isLoopbackDevice", False),
                 "host_api": int(info.get("hostApi", -1)),

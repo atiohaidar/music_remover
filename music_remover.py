@@ -154,6 +154,92 @@ def _push_resampled(
     output_buffer.push(audio)
 
 
+def interactive_setup():
+    print("\n" + "=" * 60)
+    print("  🛠️  Interactive Setup Mode")
+    print("=" * 60)
+
+    # 1. Engine selection
+    print("\n[1] Pilih Engine Noise Removal:")
+    print("    1. DTLN (Cepat, Ringan, 16kHz)")
+    print("    2. DeepFilterNet (Kualitas Tinggi, 48kHz, PyTorch) [Default]")
+    engine_choice = input("    Masukkan Pilihan (1/2) [2]: ").strip()
+    engine = "dtln" if engine_choice == "1" else "deepfilter"
+
+    # 2. Device selection
+    print("\n[2] Pilih Output Audio Device (Speakers/Headset):")
+    out_device = "Headphones"
+    try:
+        import pyaudiowpatch as pyaudio
+        from audio_capture import list_audio_devices
+        p = pyaudio.PyAudio()
+        devices = list_audio_devices(p)
+        p.terminate()
+        
+        # Filter parameter maxOutputChannels > 0 and not loopback
+        ignore_names = {"Microsoft Sound Mapper - Output", "Primary Sound Driver"}
+        valid_devs = [
+            d for d in devices 
+            if not d["is_loopback"] 
+            and d.get("output_channels", 0) > 0
+            and d["name"] not in ignore_names
+        ]
+        
+        # Deduplicate device names
+        seen_names = set()
+        out_devs = []
+        for d in valid_devs:
+            if d["name"] not in seen_names:
+                seen_names.add(d["name"])
+                out_devs.append(d)
+        
+        if out_devs:
+            for i, d in enumerate(out_devs):
+                print(f"    {i+1}. {d['name'][:50]}")
+            
+            dev_choice = input(f"    Masukkan Pilihan (1-{len(out_devs)}) [1]: ").strip()
+            try:
+                idx = int(dev_choice) - 1
+                if 0 <= idx < len(out_devs):
+                    out_device = out_devs[idx]["name"]
+                else:
+                    out_device = out_devs[0]["name"]
+            except ValueError:
+                out_device = out_devs[0]["name"]
+        else:
+            print("    [!] Tidak ada output yang ditemukan. Menggunakan default 'Headphones'.")
+    except Exception as e:
+        print(f"    [!] Gagal memuat devices: {e}. Menggunakan default 'Headphones'.")
+
+    # 3. Latency option
+    print("\n[3] Tampilkan Diagnostik Latensi Real-time?")
+    print("    y. Ya (Tampilkan latensi)")
+    print("    n. Tidak (Tampilan bersih) [Default]")
+    lat_choice = input("    Masukkan Pilihan (y/n) [n]: ").strip().lower()
+    latency = lat_choice == 'y'
+
+    print("\n" + "=" * 60)
+    print("  🚀 Memulai aplikasi dengan konfigurasi pilihanmu...")
+    print("=" * 60 + "\n")
+
+    class Args:
+        pass
+    
+    args = Args()
+    args.engine = engine
+    args.output = out_device
+    args.latency = latency
+    args.input = "loopback"
+    args.list_devices = False
+    args.quantized = False
+    args.model_dir = "models"
+    args.threads = 1
+    args.buffer_size = 128
+    args.verbose = False
+    
+    return args
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Real-Time Music Remover — Speech Enhancement CLI",
@@ -224,6 +310,10 @@ def main():
 
     args = parser.parse_args()
 
+    # Jika user tidak memasukkan argumen di terminal, jalankan interactive mode
+    if len(sys.argv) == 1:
+        args = interactive_setup()
+
     # List devices mode
     if args.list_devices:
         print_devices()
@@ -269,9 +359,25 @@ def main():
             print(f"       Block size: {engine.block_size} samples ({engine.frame_duration_ms:.1f}ms FFT frame)")
             print(f"       Sample rate: {engine.sample_rate} Hz")
         except FileNotFoundError as e:
-            print(f"\nERROR: {e}")
-            print("Run: python download_model.py")
-            sys.exit(1)
+            print(f"\n[!] Model DTLN tidak ditemukan: {e}")
+            choice = input("    Download model sekarang? (y/n) [y]: ").strip().lower()
+            if choice != 'n':
+                try:
+                    import download_model
+                    download_model.main()
+                    # Re-attempt loading
+                    print("\n[INIT] Mencoba memuat model kembali...")
+                    engine = DTLNInferenceEngine(
+                        model_dir=args.model_dir,
+                        use_quantized=args.quantized,
+                        num_threads=args.threads,
+                    )
+                except Exception as e2:
+                    print(f"\nERROR: Gagal memuat model setelah download: {e2}")
+                    sys.exit(1)
+            else:
+                print("Aborting. DTLN requires models to run.")
+                sys.exit(1)
 
     # Create ring buffers (large for quality)
     input_buffer = RingBuffer(max_chunks=args.buffer_size)

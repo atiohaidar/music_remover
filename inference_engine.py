@@ -112,7 +112,7 @@ class DTLNInferenceEngine:
         self._in_buffer[:] = 0
         self._out_buffer[:] = 0
 
-    def process_shift(self, new_samples: np.ndarray) -> np.ndarray:
+    def process_shift(self, new_samples: np.ndarray, strength: float = 1.0) -> np.ndarray:
         """
         Process one shift of audio (128 samples) through the DTLN pipeline.
         
@@ -127,6 +127,7 @@ class DTLNInferenceEngine:
         
         Args:
             new_samples: 128 new audio samples (float32).
+            strength: Filter strength 0.0 to 1.0
         
         Returns:
             128 enhanced audio samples (float32).
@@ -179,9 +180,9 @@ class DTLNInferenceEngine:
         # Apply simple dry/wet mix (delayed by algorithmic latency)
         if strength < 1.0:
             if strength <= 0.0:
-                out_shift = input_shift.copy()
+                out_shift = new_samples.copy()
             else:
-                out_shift = input_shift * (1.0 - strength) + out_shift * strength
+                out_shift = new_samples * (1.0 - strength) + out_shift * strength
 
         return out_shift
 

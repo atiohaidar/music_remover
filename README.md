@@ -1,4 +1,4 @@
-# NoMusic — Real-Time Music Remover CLI
+# Music Remover — Real-Time Speech Enhancement CLI
 
 Aplikasi CLI untuk Windows yang menghilangkan background music secara real-time dari system audio, dan hanya menyisakan suara manusia (speech/dialog).
 
@@ -63,18 +63,30 @@ python patch_deepfilter.py
 - **DeepFilterNet**: Model `DeepFilterNet3` akan diunduh otomatis pada saat pertama kali program dijalankan.
 - **DTLN**: Jalankan `python download_model.py` untuk mengunduh model ONNX (~3.5 MB) ke folder `models/`.
 
-## Usage & Controls
+### 🚀 Cara Menjalankan (Paling Mudah)
+Cukup jalankan perintah di bawah ini tanpa argumen untuk masuk ke **Interactive Setup Mode**:
+```bash
+python music_remover.py
+```
+Kamu akan diminta memilih:
+1. **Engine**: DTLN atau DeepFilterNet.
+2. **Device**: List speaker/headset kamu akan muncul otomatis (pilih berdasarkan nomor).
+3. **Diagnostics**: Aktifkan atau nonaktifkan tampilan latensi real-time.
 
-### Menjalankan Engine DeepFilterNet (Kualitas Terbaik/Default)
+---
+
+### Manual Usage (Advanced)
+Jika ingin melewati menu interaktif, gunakan perintah manual:
+
+#### Menjalankan Engine DeepFilterNet (Kualitas Terbaik)
 ```bash
 python music_remover.py --engine deepfilter --output "Headphones (Senary Audio)" --latency
 ```
 
-### Menjalankan Engine DTLN (Latency Terendah)
+#### Menjalankan Engine DTLN (Latency Terendah)
 ```bash
 python music_remover.py --engine dtln --output "Headphones (Senary Audio)" --latency
 ```
-*(Atau cukup `python music_remover.py` karena dtln menjaga backward compatibility jika module DF gagal diload).*
 
 ### 🎛️ Interactive Controls
 Saat program berjalan, kamu bisa mengatur seberapa kuat filternya secara real-time (hanya dengan mengetik di terminal):
