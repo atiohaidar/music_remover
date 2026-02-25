@@ -2,16 +2,21 @@
 Real-Time Music Remover CLI
 
 Captures system audio via WASAPI loopback, removes background music
-using DTLN speech enhancement model (ONNX), and outputs clean speech
-to a target audio device.
+using speech enhancement models, and outputs clean speech to a target
+audio device.
+
+Supported engines:
+  - DTLN (default): 16kHz, ONNX Runtime — lightweight, low latency
+  - DeepFilterNet: 48kHz, PyTorch — higher quality noise suppression
 
 Usage:
     python music_remover.py --output "Headphones (Senary Audio)" --latency
+    python music_remover.py --engine deepfilter --output "Headphones (Senary Audio)" --latency
     python music_remover.py --list-devices
 
 Architecture:
     System Audio → Virtual Audio Cable → WASAPI Loopback
-    → Ring Buffer → DTLN ONNX → Resample+Stereo → Output Buffer → Speakers
+    → Ring Buffer → Engine (DTLN/DeepFilterNet) → [Resample] → Stereo → Output Buffer → Speakers
 """
 
 import argparse
@@ -25,7 +30,6 @@ import numpy as np
 from ring_buffer import RingBuffer
 from audio_capture import AudioCapture, list_audio_devices
 from audio_output import AudioOutput
-from inference_engine import DTLNInferenceEngine
 from diagnostics import Diagnostics
 from resampler import resample_from_16k, mono_to_stereo
 
@@ -36,15 +40,16 @@ except ImportError:
     sys.exit(1)
 
 
-BANNER = r"""
+def _make_banner(engine_name: str) -> str:
+    return rf"""
   _   _       __  __           _      
  | \ | | ___ |  \/  |_   _ ___(_) ___ 
  |  \| |/ _ \| |\/| | | | / __| |/ __|
  | |\  | (_) | |  | | |_| \__ \ | (__ 
  |_| \_|\___/|_|  |_|\__,_|___/_|\___|
-                                        
-  Real-Time Music Remover v1.0
-  Speech Enhancement via DTLN + ONNX Runtime
+                                         
+  Real-Time Music Remover v2.0
+  Engine: {engine_name}
 """
 
 
@@ -75,23 +80,26 @@ def print_devices():
 
 
 def processing_loop(
-    engine: DTLNInferenceEngine,
+    engine,
     input_buffer: RingBuffer,
     output_buffer: RingBuffer,
     diagnostics: Diagnostics,
     stop_event: threading.Event,
     output_sr: int,
     output_channels: int,
+    filter_strength: list,
 ):
     """
-    Main processing loop: pop from input → inference → batch resample → stereo → push to output.
-    Runs in a dedicated thread. Accumulates enhanced audio before resampling
-    for better filter quality (fewer edge artifacts).
+    Main processing loop: pop from input → inference → dry/wet mix → [resample] → stereo → push.
+    Runs in a dedicated thread.
+    
+    filter_strength is a shared list [float] where filter_strength[0] is the
+    dry/wet mix ratio (0.0 = bypass/original, 1.0 = full filter).
     """
     model_sr = engine.sample_rate
 
     # Accumulate enhanced audio for batch resampling (better quality)
-    RESAMPLE_BATCH = 2048  # 128ms at 16kHz
+    RESAMPLE_BATCH = 9600 if model_sr == 48000 else 2048
     accum_enhanced = np.array([], dtype=np.float32)
 
     while not stop_event.is_set():
@@ -106,11 +114,16 @@ def processing_loop(
                 accum_enhanced = np.array([], dtype=np.float32)
             continue
 
-        # --- Inference ---
+        # --- Inference (dry/wet mix now handled inside engine) ---
         t0 = time.perf_counter()
-        enhanced = engine.process_chunk(chunk)
+        strength = filter_strength[0]
+        enhanced = engine.process_chunk(chunk, strength=strength)
         dt = time.perf_counter() - t0
         diagnostics.record_inference_time(dt)
+
+        # DeepFilterNet may return empty array while buffering
+        if len(enhanced) == 0:
+            continue
 
         # --- Accumulate for batch resampling ---
         accum_enhanced = np.concatenate([accum_enhanced, enhanced])
@@ -166,6 +179,13 @@ def main():
         help="List all audio devices and exit",
     )
     parser.add_argument(
+        "--engine",
+        type=str,
+        choices=["dtln", "deepfilter"],
+        default="dtln",
+        help="Speech enhancement engine: 'dtln' (default, 16kHz ONNX) or 'deepfilter' (48kHz, better quality)",
+    )
+    parser.add_argument(
         "--latency",
         action="store_true",
         help="Enable real-time latency diagnostics display",
@@ -173,19 +193,19 @@ def main():
     parser.add_argument(
         "--quantized",
         action="store_true",
-        help="Use INT8 quantized models for faster inference",
+        help="Use INT8 quantized models for faster inference (DTLN only)",
     )
     parser.add_argument(
         "--model-dir",
         type=str,
         default="models",
-        help="Directory containing ONNX models (default: models)",
+        help="Directory containing ONNX models (default: models, DTLN only)",
     )
     parser.add_argument(
         "--threads",
         type=int,
         default=1,
-        help="Number of ONNX Runtime inference threads (default: 1)",
+        help="Number of ONNX Runtime inference threads (default: 1, DTLN only)",
     )
     parser.add_argument(
         "--buffer-size",
@@ -206,36 +226,66 @@ def main():
         print_devices()
         return
 
-    # Banner
-    print(BANNER)
+    # === Initialize engine ===
+    use_deepfilter = args.engine == "deepfilter"
 
-    # === Initialize components ===
-    print("[INIT] Loading DTLN ONNX model...")
-    try:
-        engine = DTLNInferenceEngine(
-            model_dir=args.model_dir,
-            use_quantized=args.quantized,
-            num_threads=args.threads,
-        )
-        print(f"       Model: {'INT8 quantized' if args.quantized else 'FP32'}")
-        print(f"       Frame size: {engine.frame_size} samples ({engine.shift_duration_ms:.1f}ms shift)")
-        print(f"       Block size: {engine.block_size} samples ({engine.frame_duration_ms:.1f}ms FFT frame)")
-        print(f"       Sample rate: {engine.sample_rate} Hz")
-    except FileNotFoundError as e:
-        print(f"\nERROR: {e}")
-        print("Run: python download_model.py")
-        sys.exit(1)
+    if use_deepfilter:
+        engine_label = "DeepFilterNet (48kHz, PyTorch)"
+    else:
+        engine_label = "DTLN (16kHz, ONNX Runtime)"
+
+    # Banner
+    print(_make_banner(engine_label))
+
+    if use_deepfilter:
+        print("[INIT] Loading DeepFilterNet model...")
+        try:
+            from inference_engine_df import DeepFilterNetEngine
+            engine = DeepFilterNetEngine()
+            print(f"       Model: DeepFilterNet3")
+            print(f"       Chunk size: {engine.frame_size} samples ({engine.shift_duration_ms:.1f}ms)")
+            print(f"       Sample rate: {engine.sample_rate} Hz")
+        except ImportError as e:
+            print(f"\nERROR: DeepFilterNet not installed: {e}")
+            print("Run: pip install deepfilternet torch torchaudio")
+            sys.exit(1)
+        except Exception as e:
+            print(f"\nERROR: Failed to load DeepFilterNet: {e}")
+            sys.exit(1)
+    else:
+        print("[INIT] Loading DTLN ONNX model...")
+        try:
+            from inference_engine import DTLNInferenceEngine
+            engine = DTLNInferenceEngine(
+                model_dir=args.model_dir,
+                use_quantized=args.quantized,
+                num_threads=args.threads,
+            )
+            print(f"       Model: {'INT8 quantized' if args.quantized else 'FP32'}")
+            print(f"       Frame size: {engine.frame_size} samples ({engine.shift_duration_ms:.1f}ms shift)")
+            print(f"       Block size: {engine.block_size} samples ({engine.frame_duration_ms:.1f}ms FFT frame)")
+            print(f"       Sample rate: {engine.sample_rate} Hz")
+        except FileNotFoundError as e:
+            print(f"\nERROR: {e}")
+            print("Run: python download_model.py")
+            sys.exit(1)
 
     # Create ring buffers (large for quality)
     input_buffer = RingBuffer(max_chunks=args.buffer_size)
     output_buffer = RingBuffer(max_chunks=args.buffer_size * 4)
 
     # === Start audio capture (but NOT output yet) ===
+    # Determine capture chunk size based on engine
+    if use_deepfilter:
+        capture_chunk = engine.frame_size  # Matches engine HOP_SIZE (12000 samples = 250ms)
+    else:
+        capture_chunk = 512  # Keep 512 for DTLN (32ms at 16kHz) for buffer stability
+
     print("\n[INIT] Starting audio capture (WASAPI loopback)...")
     capture = AudioCapture(
         ring_buffer=input_buffer,
         target_sr=engine.sample_rate,
-        chunk_samples=512,  # 32ms chunks at 16kHz
+        chunk_samples=capture_chunk,
     )
     try:
         cap_info = capture.start()
@@ -247,7 +297,7 @@ def main():
         sys.exit(1)
 
     # === Prepare output (but don't start stream yet) ===
-    print(f"\n[INIT] Preparing audio output → '{args.output}'...")
+    print(f"\n[INIT] Opening output → '{args.output}'...")
     output = AudioOutput(
         ring_buffer=output_buffer,
         device_name=args.output,
@@ -258,8 +308,11 @@ def main():
         input_buffer=input_buffer,
         output_buffer=output_buffer,
         model_sr=engine.sample_rate,
-        frame_size=512,
+        frame_size=capture_chunk,
     )
+
+    # === Shared filter strength (mutable list for thread safety) ===
+    filter_strength = [1.0]  # 1.0 = full filter, 0.0 = bypass
 
     # === Start processing thread (fills output buffer) ===
     stop_event = threading.Event()
@@ -267,17 +320,19 @@ def main():
         target=processing_loop,
         args=(
             engine, input_buffer, output_buffer, diag, stop_event,
-            48000,  # Will be updated after output starts
+            48000,  # output SR
             2,      # stereo
+            filter_strength,
         ),
         daemon=True,
     )
     proc_thread.start()
 
     # === SUPER PRE-BUFFER: fill 1 second of processed audio before playing ===
-    print("\n[INIT] Pre-buffering 1 second of audio (for clean output)...")
+    print("\n[INIT] Pre-buffering audio...")
+    prebuf_target = 3 if use_deepfilter else 5  # Less chunks needed at 48kHz
     prebuf_start = time.time()
-    while output_buffer.size < 5 and (time.time() - prebuf_start) < 3.0:
+    while output_buffer.size < prebuf_target and (time.time() - prebuf_start) < 5.0:
         time.sleep(0.1)
     print(f"       Pre-buffered {output_buffer.size} chunks")
 
@@ -295,8 +350,16 @@ def main():
         sys.exit(1)
 
     print("\n" + "=" * 60)
-    print("  Processing active! Press Ctrl+C to stop.")
+    print("  Processing active!")
     print("=" * 60)
+    print("  Controls:")
+    print("    +/=  Increase filter strength (+10%)")
+    print("    -    Decrease filter strength (-10%)")
+    print("    0    Bypass (no filter)")
+    print("    9    Max filter (100%)")
+    print("    q    Quit")
+    print("=" * 60)
+    print(f"  Filter strength: {filter_strength[0]*100:.0f}%")
 
     if not args.latency:
         print("\nTip: Add --latency flag to see real-time performance stats.\n")
@@ -308,19 +371,59 @@ def main():
     if args.latency:
         diag.start()
 
-    # === Main loop (wait for Ctrl+C) ===
+    # === Main loop with interactive keyboard control ===
     def signal_handler(sig, frame):
         stop_event.set()
 
     signal.signal(signal.SIGINT, signal_handler)
 
     try:
+        import msvcrt  # Windows non-blocking keyboard input
         while not stop_event.is_set():
-            stop_event.wait(timeout=0.5)
+            if msvcrt.kbhit():
+                key = msvcrt.getch()
+                _handle_key(key, filter_strength, stop_event)
+            else:
+                time.sleep(0.05)
+    except ImportError:
+        # Non-Windows: fall back to simple wait
+        try:
+            while not stop_event.is_set():
+                stop_event.wait(timeout=0.5)
+        except KeyboardInterrupt:
+            stop_event.set()
     except KeyboardInterrupt:
         stop_event.set()
 
     # === Cleanup ===
+    _cleanup(diag, capture, output, proc_thread, args)
+
+
+def _handle_key(key: bytes, filter_strength: list, stop_event):
+    """Handle a single keypress for filter strength control."""
+    STEP = 0.10  # 10% steps
+
+    if key in (b'+', b'='):
+        filter_strength[0] = min(1.0, filter_strength[0] + STEP)
+    elif key == b'-':
+        filter_strength[0] = max(0.0, filter_strength[0] - STEP)
+    elif key == b'0':
+        filter_strength[0] = 0.0
+    elif key == b'9':
+        filter_strength[0] = 1.0
+    elif key in (b'q', b'Q', b'\x03'):  # q or Ctrl+C
+        stop_event.set()
+        return
+    else:
+        return  # Unknown key, ignore
+
+    pct = filter_strength[0] * 100
+    bar = '█' * int(pct / 5) + '░' * (20 - int(pct / 5))
+    print(f"\r  Filter: [{bar}] {pct:3.0f}%   ", end="", flush=True)
+
+
+def _cleanup(diag, capture, output, proc_thread, args):
+    """Shutdown all components and print summary."""
     print("\n\n[STOP] Shutting down...")
     diag.stop()
     capture.stop()

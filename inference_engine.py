@@ -174,14 +174,24 @@ class DTLNInferenceEngine:
         self._out_buffer += np.squeeze(out_block)
 
         # Return the oldest shift
-        return self._out_buffer[:self.BLOCK_SHIFT].copy()
+        out_shift = self._out_buffer[:self.BLOCK_SHIFT].copy()
 
-    def process_chunk(self, chunk: np.ndarray) -> np.ndarray:
+        # Apply simple dry/wet mix (delayed by algorithmic latency)
+        if strength < 1.0:
+            if strength <= 0.0:
+                out_shift = input_shift.copy()
+            else:
+                out_shift = input_shift * (1.0 - strength) + out_shift * strength
+
+        return out_shift
+
+    def process_chunk(self, chunk: np.ndarray, strength: float = 1.0) -> np.ndarray:
         """
         Process an arbitrary-length audio chunk by splitting into shifts.
         
         Args:
             chunk: Audio data, float32, length should be a multiple of BLOCK_SHIFT (128).
+            strength: Filter strength 0.0 to 1.0
         
         Returns:
             Enhanced audio, same length as input.
@@ -192,7 +202,7 @@ class DTLNInferenceEngine:
         i = 0
         while i + self.BLOCK_SHIFT <= n_samples:
             shift = chunk[i : i + self.BLOCK_SHIFT]
-            enhanced = self.process_shift(shift)
+            enhanced = self.process_shift(shift, strength)
             output[i : i + self.BLOCK_SHIFT] = enhanced
             i += self.BLOCK_SHIFT
 
@@ -201,7 +211,7 @@ class DTLNInferenceEngine:
             remaining = n_samples - i
             padded = np.zeros(self.BLOCK_SHIFT, dtype=np.float32)
             padded[:remaining] = chunk[i:]
-            enhanced = self.process_shift(padded)
+            enhanced = self.process_shift(padded, strength)
             output[i:] = enhanced[:remaining]
 
         return output

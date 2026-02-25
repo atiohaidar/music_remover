@@ -2,22 +2,24 @@
 
 Aplikasi CLI untuk Windows yang menghilangkan background music secara real-time dari system audio, dan hanya menyisakan suara manusia (speech/dialog).
 
-## Architecture
+Mulai versi 2.0, aplikasi ini mendukung 2 mesin pemrosesan:
+1. **DeepFilterNet (Baru, Default)**: Kualitas pemisahan instrumen/suara jauh lebih jernih, native 48kHz, menggunakan teknik overlap-add (latency ~250ms).
+2. **DTLN (Klasik)**: Sangat ringan, menggunakan ONNX, latency sangat rendah (~70ms).
 
-```
-System Audio (YouTube, VLC, dll)
+## Architecture (DeepFilterNet Mode)
+
+```text
+System Audio (YouTube, VLC, dll) [48kHz]
         ↓
 WASAPI Loopback Capture (PyAudioWPatch)
         ↓
-Ring Buffer (32ms chunks)
+Ring Buffer (Accumulate 500ms chunks)
         ↓
-DTLN Speech Enhancement (ONNX Runtime)
+DeepFilterNet (PyTorch) + 50% Overlap-Add & Crossfade
         ↓
-Output Ring Buffer
+Output Ring Buffer (250ms hops)
         ↓
-VB-Cable Virtual Audio Device
-        ↓
-Speaker / Headset
+VB-Cable Virtual Audio Device / Real Headphones
 ```
 
 ## Prerequisites
@@ -47,156 +49,73 @@ cd d:\Project\nomusic
 pip install -r requirements.txt
 ```
 
-### 3. Download AI Model
+### 3. Jalankan Patch Kompatibilitas (Penting!)
+
+Library `deepfilternet` bawaan PyPI memiliki bug dengan `torchaudio` versi baru (2.10+). Setelah *pip install*, jalankan script ini sekali saja:
 
 ```bash
-python download_model.py
+python patch_deepfilter.py
 ```
+*Script ini akan otomatis menambal error kompatibilitas torchaudio pada library deepfilternet di komputermu.*
 
-Model DTLN (~3.5 MB total) akan didownload ke folder `models/`.
+### 4. Download Model (Otomatis)
 
-### 4. (Opsional) Quantize Model ke INT8
+- **DeepFilterNet**: Model `DeepFilterNet3` akan diunduh otomatis pada saat pertama kali program dijalankan.
+- **DTLN**: Jalankan `python download_model.py` untuk mengunduh model ONNX (~3.5 MB) ke folder `models/`.
 
+## Usage & Controls
+
+### Menjalankan Engine DeepFilterNet (Kualitas Terbaik/Default)
 ```bash
-python quantize_model.py
+python music_remover.py --engine deepfilter --output "Headphones (Senary Audio)" --latency
 ```
 
-Menghasilkan model INT8 yang lebih cepat (~30% speedup).
-
-## Usage
-
-### PENTING: Setup Audio Routing
-
-Untuk menghindari echo/gema, routing harus diatur dengan benar:
-
-```
-YouTube/VLC/dll → Virtual Audio Cable (tidak terdengar langsung)
-        ↓
-  WASAPI Loopback capture dari VAC
-        ↓
-  DTLN Speech Enhancement
-        ↓
-  Headphones / Speaker (kamu dengar hanya yang diproses)
-```
-
-**Langkah Setup:**
-
-1. **Ubah Windows default output** ke **Virtual Audio Cable**:
-   - Settings → Sound → Output → pilih "Line 1 (Virtual Audio Cable)"
-   - Sekarang semua audio system masuk ke VAC (tidak terdengar langsung)
-
-2. **Jalankan music remover** — output ke speaker/headphone asli kamu:
-   ```bash
-   python music_remover.py --output "Headphones (Senary Audio)" --latency
-   ```
-
-3. **Selesai!** Kamu akan mendengar audio yang sudah dihilangkan musiknya
-
-4. Untuk **berhenti**: tekan `Ctrl+C`, lalu kembalikan Windows output ke speaker biasa
-
-> **⚠️ JANGAN** set output app ke Virtual Audio Cable yang sama — ini akan membuat feedback loop!
-
-### List audio devices
+### Menjalankan Engine DTLN (Latency Terendah)
 ```bash
-python music_remover.py --list-devices
+python music_remover.py --engine dtln --output "Headphones (Senary Audio)" --latency
 ```
+*(Atau cukup `python music_remover.py` karena dtln menjaga backward compatibility jika module DF gagal diload).*
 
-### Menggunakan model INT8 (lebih cepat)
-```bash
-python music_remover.py --output "Headphones (Senary Audio)" --quantized --latency
-```
+### 🎛️ Interactive Controls
+Saat program berjalan, kamu bisa mengatur seberapa kuat filternya secara real-time (hanya dengan mengetik di terminal):
+
+- `+` atau `=` : Menambah kekuatan filter (+10%)
+- `-` : Mengurangi kekuatan filter (-10%)
+- `0` : Bypass (Matikan filter, 0%)
+- `9` : Filter maksimal (100%)
+- `q` : Keluar aplikasi dengan aman
 
 ## CLI Options
 
-| Flag             | Default       | Description                            |
-| ---------------- | ------------- | -------------------------------------- |
-| `--input`        | `loopback`    | Input source (WASAPI loopback)         |
-| `--output`       | `CABLE Input` | Nama output device                     |
-| `--list-devices` | -             | List semua audio device                |
-| `--latency`      | -             | Tampilkan diagnostik latency real-time |
-| `--quantized`    | -             | Gunakan model INT8                     |
-| `--model-dir`    | `models`      | Direktori model ONNX                   |
-| `--threads`      | `1`           | Jumlah thread inference                |
-| `--buffer-size`  | `64`          | Ukuran ring buffer (chunks)            |
-| `--verbose`      | -             | Output verbose                         |
+| Flag             | Default       | Description                             |
+| ---------------- | ------------- | --------------------------------------- |
+| `--engine`       | `dtln`        | Pilih engine (`deepfilter` atau `dtln`) |
+| `--input`        | `loopback`    | Input source (WASAPI loopback)          |
+| `--output`       | `CABLE Input` | Nama output device                      |
+| `--list-devices` | -             | List semua audio device                 |
+| `--latency`      | -             | Tampilkan diagnostik latency real-time  |
+| `--quantized`    | -             | Gunakan model INT8 (hanya untuk DTLN)   |
 
-## Performance
+## Performance Metrics
 
-| Metric              | Expected                       |
-| ------------------- | ------------------------------ |
-| Frame size          | 32ms (512 samples @ 16kHz)     |
-| Inference per frame | 2-8ms                          |
-| End-to-end latency  | ~70ms                          |
-| CPU usage           | < 10% (single core)            |
-| Model size          | ~3.5 MB (FP32), ~1.8 MB (INT8) |
-| Real-time factor    | < 0.25                         |
+| Metric             | DeepFilterNet (New)         | DTLN (Classic)              |
+| ------------------ | --------------------------- | --------------------------- |
+| Sample Rate        | 48kHz (Native, No Resample) | 16kHz (Requires Resampling) |
+| Chunk Size / Hop   | Accumulate 500ms, Hop 250ms | Blocks of 32ms, Hop 8ms     |
+| End-to-end latency | ~250ms - 350ms              | ~70ms - 150ms               |
+| Speech Quality     | ⭐⭐⭐⭐⭐ (Sangat jernih)       | ⭐⭐⭐ (Cukup)                 |
+| Background Music   | Terhapus Total              | Tereduksi                   |
 
-## Testing Latency
+## How It Works (DeepFilterNet Mode)
 
-Untuk memastikan latency acceptable:
-
-```bash
-python music_remover.py --input loopback --output "CABLE Input" --latency
-```
-
-Perhatikan output diagnostik:
-- **Latency**: harus < 150ms
-- **RTF** (Real-Time Factor): harus < 1.0 (idealnya < 0.3)
-- **Overflow**: harus 0 (jika > 0, inference terlalu lambat)
-
-## Troubleshooting
-
-### "No WASAPI loopback device found"
-- Pastikan ada audio yang sedang diplay (buka YouTube, dll)
-- Cek default output device di Windows Sound Settings
-
-### "Output device 'CABLE Input' not found"
-- Pastikan VB-Cable sudah terinstall (restart setelah install)
-- Gunakan `--list-devices` untuk melihat nama device yang tepat
-- Nama device bisa sedikit berbeda, misal "CABLE Input (VB-Audio Virtual Cable)"
-
-### Audio glitch / stutter
-- Naikkan buffer size: `--buffer-size 128`
-- Kurangi thread: `--threads 1`
-- Gunakan model INT8: `--quantized`
-
-### Latency terlalu tinggi
-- Turunkan buffer size: `--buffer-size 32`
-- Gunakan model INT8: `--quantized`
-
-## Project Structure
-
-```
-nomusic/
-├── music_remover.py       # CLI entry point
-├── audio_capture.py       # WASAPI loopback capture
-├── audio_output.py        # VB-Cable audio output
-├── inference_engine.py    # DTLN ONNX inference (2-stage)
-├── ring_buffer.py         # Thread-safe ring buffer
-├── resampler.py           # Sample rate conversion
-├── diagnostics.py         # Latency & performance monitoring
-├── download_model.py      # Model downloader
-├── quantize_model.py      # INT8 quantization
-├── requirements.txt       # Python dependencies
-├── README.md              # This file
-└── models/
-    ├── dtln_1.onnx        # DTLN Stage 1 (STFT path)
-    └── dtln_2.onnx        # DTLN Stage 2 (learned basis)
-```
-
-## How It Works
-
-1. **Capture**: PyAudioWPatch membuka WASAPI loopback stream yang menangkap semua system audio
-2. **Resample**: Audio stereo dikonversi ke mono 16kHz (sesuai model)
-3. **Buffer**: Chunks disimpan di ring buffer thread-safe
-4. **Inference**: Processing thread mengambil chunks dan menjalankan DTLN model:
-   - Stage 1: STFT domain processing (magnitude masking)
-   - Stage 2: Learned basis processing (temporal features)
-5. **Output**: Audio yang sudah di-enhance di-resample kembali ke native SR dan dikirim ke VB-Cable
-6. **Listen**: User mendengar output via CABLE Output device
+1. **Capture**: loopback stream WASAPI menangkap system audio pada **48kHz native**.
+2. **Accumulation**: Audio ditampung hingga mencapai panjang 0.5 detik (500ms).
+3. **Inference (Overlap-Add)**: DeepFilterNet memproses sinyal. Outputnya lalu di-crossfade 50% menggunakan Hann Window dengan porsi ekor dari chunk sebelumnya. Ini dilakukan untuk menghindari suara patah-patah/stuttering pada batas frame.
+4. **Mix**: Efek filter dicampur menggunakan fitur *native attenuation limit* dalam model, menghasilkan *dry/wet mix* presisi dalam spektrum frekuensi tanpa jeda phasa (menghindari suara comb-filtering/menggema).
+5. **Output**: Sinyal (sebesar 0.25 detik hop) dikirim langsung ke output.
 
 ## Credits
 
-- **DTLN Model**: [breizhn/DTLN](https://github.com/breizhn/DTLN) — Dual-signal Transformation LSTM Network
-- **ONNX Runtime**: [Microsoft](https://onnxruntime.ai/)
-- **VB-Cable**: [VB-Audio](https://vb-audio.com/Cable/)
+- **DeepFilterNet**: [Rikorose/DeepFilterNet](https://github.com/Rikorose/DeepFilterNet)
+- **DTLN Model**: [breizhn/DTLN](https://github.com/breizhn/DTLN)
+- **PyAudioWPatch**: WASAPI loopback extension for Windows
