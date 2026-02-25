@@ -84,15 +84,26 @@ def processing_loop(
     output_channels: int,
 ):
     """
-    Main processing loop: pop from input → inference → resample → stereo → push to output.
-    Runs in a dedicated thread. Resampling and stereo conversion happen here,
-    NOT in the audio callbacks, for better quality and lower callback latency.
+    Main processing loop: pop from input → inference → batch resample → stereo → push to output.
+    Runs in a dedicated thread. Accumulates enhanced audio before resampling
+    for better filter quality (fewer edge artifacts).
     """
     model_sr = engine.sample_rate
+
+    # Accumulate enhanced audio for batch resampling (better quality)
+    RESAMPLE_BATCH = 2048  # 128ms at 16kHz
+    accum_enhanced = np.array([], dtype=np.float32)
 
     while not stop_event.is_set():
         chunk = input_buffer.pop(timeout=0.02)
         if chunk is None:
+            # Flush remaining data
+            if len(accum_enhanced) > 0:
+                _push_resampled(
+                    accum_enhanced, output_buffer,
+                    model_sr, output_sr, output_channels,
+                )
+                accum_enhanced = np.array([], dtype=np.float32)
             continue
 
         # --- Inference ---
@@ -101,16 +112,30 @@ def processing_loop(
         dt = time.perf_counter() - t0
         diagnostics.record_inference_time(dt)
 
-        # --- Resample 16kHz → output device native SR ---
-        if model_sr != output_sr:
-            enhanced = resample_from_16k(enhanced, output_sr)
+        # --- Accumulate for batch resampling ---
+        accum_enhanced = np.concatenate([accum_enhanced, enhanced])
 
-        # --- Mono → Stereo if needed ---
-        if output_channels >= 2:
-            enhanced = mono_to_stereo(enhanced).flatten()
+        if len(accum_enhanced) >= RESAMPLE_BATCH:
+            _push_resampled(
+                accum_enhanced, output_buffer,
+                model_sr, output_sr, output_channels,
+            )
+            accum_enhanced = np.array([], dtype=np.float32)
 
-        # --- Push pre-formatted data to output buffer ---
-        output_buffer.push(enhanced)
+
+def _push_resampled(
+    audio: np.ndarray,
+    output_buffer: RingBuffer,
+    model_sr: int,
+    output_sr: int,
+    output_channels: int,
+):
+    """Resample a large batch, convert to stereo, push to output buffer."""
+    if model_sr != output_sr:
+        audio = resample_from_16k(audio, output_sr)
+    if output_channels >= 2:
+        audio = mono_to_stereo(audio).flatten()
+    output_buffer.push(audio)
 
 
 def main():
@@ -201,11 +226,11 @@ def main():
         print("Run: python download_model.py")
         sys.exit(1)
 
-    # Create ring buffers (larger to avoid overflow)
+    # Create ring buffers (large for quality)
     input_buffer = RingBuffer(max_chunks=args.buffer_size)
-    output_buffer = RingBuffer(max_chunks=args.buffer_size * 2)
+    output_buffer = RingBuffer(max_chunks=args.buffer_size * 4)
 
-    # === Start audio capture ===
+    # === Start audio capture (but NOT output yet) ===
     print("\n[INIT] Starting audio capture (WASAPI loopback)...")
     capture = AudioCapture(
         ring_buffer=input_buffer,
@@ -221,12 +246,42 @@ def main():
         print(f"\nERROR: {e}")
         sys.exit(1)
 
-    # === Start audio output ===
-    print(f"\n[INIT] Starting audio output → '{args.output}'...")
+    # === Prepare output (but don't start stream yet) ===
+    print(f"\n[INIT] Preparing audio output → '{args.output}'...")
     output = AudioOutput(
         ring_buffer=output_buffer,
         device_name=args.output,
     )
+
+    # Diagnostics
+    diag = Diagnostics(
+        input_buffer=input_buffer,
+        output_buffer=output_buffer,
+        model_sr=engine.sample_rate,
+        frame_size=512,
+    )
+
+    # === Start processing thread (fills output buffer) ===
+    stop_event = threading.Event()
+    proc_thread = threading.Thread(
+        target=processing_loop,
+        args=(
+            engine, input_buffer, output_buffer, diag, stop_event,
+            48000,  # Will be updated after output starts
+            2,      # stereo
+        ),
+        daemon=True,
+    )
+    proc_thread.start()
+
+    # === SUPER PRE-BUFFER: fill 1 second of processed audio before playing ===
+    print("\n[INIT] Pre-buffering 1 second of audio (for clean output)...")
+    prebuf_start = time.time()
+    while output_buffer.size < 5 and (time.time() - prebuf_start) < 3.0:
+        time.sleep(0.1)
+    print(f"       Pre-buffered {output_buffer.size} chunks")
+
+    # === NOW start output stream ===
     try:
         out_info = output.start()
         print(f"       Device: {out_info['device_name']}")
@@ -235,29 +290,9 @@ def main():
         print(f"       Host API: {out_info.get('host_api', '?')}")
     except RuntimeError as e:
         print(f"\nERROR: {e}")
+        stop_event.set()
         capture.stop()
         sys.exit(1)
-
-    # Diagnostics
-    diag = Diagnostics(
-        input_buffer=input_buffer,
-        output_buffer=output_buffer,
-        model_sr=engine.sample_rate,
-        frame_size=512,  # chunk size for latency estimation
-    )
-
-    # === Start processing thread ===
-    stop_event = threading.Event()
-    proc_thread = threading.Thread(
-        target=processing_loop,
-        args=(
-            engine, input_buffer, output_buffer, diag, stop_event,
-            output.native_sample_rate,  # output SR for resampling
-            output.native_channels,     # channels for stereo conversion
-        ),
-        daemon=True,
-    )
-    proc_thread.start()
 
     print("\n" + "=" * 60)
     print("  Processing active! Press Ctrl+C to stop.")
@@ -266,7 +301,7 @@ def main():
     if not args.latency:
         print("\nTip: Add --latency flag to see real-time performance stats.\n")
 
-    # Small delay to let the first messages print cleanly before diagnostics
+    # Small delay to let messages print before diagnostics
     time.sleep(0.3)
 
     # Start diagnostics display

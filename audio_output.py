@@ -93,6 +93,7 @@ class AudioOutput:
 
         # Pre-allocated silence + accumulation buffer
         self._accum = np.array([], dtype=np.float32)
+        self._last_sample = 0.0  # Track last sample for crossfade
 
     def start(self) -> dict:
         """Start outputting audio to the device."""
@@ -102,8 +103,8 @@ class AudioOutput:
         self._native_sr = int(self._device_info["defaultSampleRate"])
         self._native_channels = min(2, int(self._device_info["maxOutputChannels"]))
 
-        # ~32ms buffer
-        frames_per_buffer = int(self._native_sr * 0.032)
+        # ~64ms buffer — larger = fewer callbacks = smoother output
+        frames_per_buffer = int(self._native_sr * 0.064)
 
         self._running = True
         self._stream = self._pa.open(
@@ -126,7 +127,11 @@ class AudioOutput:
         }
 
     def _callback(self, in_data, frame_count, time_info, status):
-        """PyAudio output callback — just pulls pre-processed data. No resampling."""
+        """
+        PyAudio output callback with crossfade protection.
+        When underrun occurs, applies a smooth fade to/from silence
+        instead of an abrupt cut (which causes clicks).
+        """
         if not self._running:
             silence = np.zeros(frame_count * self._native_channels, dtype=np.float32)
             return (silence.tobytes(), pyaudio.paComplete)
@@ -144,12 +149,21 @@ class AudioOutput:
             out_data = self._accum[:needed].astype(np.float32)
             self._accum = self._accum[needed:]
         else:
-            # Not enough data — pad with silence (fade to avoid click)
+            # UNDERRUN — crossfade what we have into silence
             out_data = np.zeros(needed, dtype=np.float32)
             available = min(len(self._accum), needed)
             if available > 0:
                 out_data[:available] = self._accum[:available]
                 self._accum = self._accum[available:]
+
+            # Apply fade-out on the last 128 samples of real data to avoid click
+            if available > 0:
+                fade_len = min(128, available)
+                fade = np.linspace(1.0, 0.0, fade_len, dtype=np.float32)
+                # Apply fade per channel
+                for ch in range(self._native_channels):
+                    start = available - fade_len + ch
+                    out_data[start::self._native_channels][:fade_len] *= fade[:len(out_data[start::self._native_channels][:fade_len])]
 
         return (out_data.tobytes(), pyaudio.paContinue)
 
