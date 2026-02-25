@@ -119,3 +119,6 @@ Saat program berjalan, kamu bisa mengatur seberapa kuat filternya secara real-ti
 - **DeepFilterNet**: [Rikorose/DeepFilterNet](https://github.com/Rikorose/DeepFilterNet)
 - **DTLN Model**: [breizhn/DTLN](https://github.com/breizhn/DTLN)
 - **PyAudioWPatch**: WASAPI loopback extension for Windows
+
+
+Dibuat oleh antigravity
