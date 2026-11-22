@@ -39,7 +39,9 @@ function render(state, syncInputs = false) {
   } else if (currentActive) {
     statusBox.className = 'status';
     const prov = state.provider ? ` [${state.provider.toUpperCase()}]` : '';
-    let timing = ' · Buffering...';
+    let timing = state.statusText && state.statusText !== 'Active'
+      ? ` · ${state.statusText}`
+      : ' · Buffering...';
     if (state.avgInferenceMs > 0) {
       timing = state.engine === 'gtcrn'
         ? ` · ${state.avgInferenceMs.toFixed(1)} ms / 16 ms`

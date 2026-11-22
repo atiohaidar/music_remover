@@ -7,10 +7,12 @@
 const MDX_MODELS = {
   kimvocal: {
     file: 'models/Kim_Vocal_2.onnx',
+    remoteUrl: 'https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx',
     compensate: 1.009,
   },
   vocft: {
     file: 'models/UVR-MDX-NET-Voc_FT.onnx',
+    remoteUrl: 'https://huggingface.co/aaatmy/uvr-mdx-net-onnx/resolve/main/UVR-MDX-NET-Voc_FT.onnx',
     compensate: 1.021,
   },
 };
@@ -217,22 +219,91 @@ function configureMdxDelay(delaySec) {
   mdxGain = 1.0;
 }
 
-// ===================== Session Loader =====================
+// ===================== Session Loader (Local or Auto-Cached Remote) =====================
+async function resolveModelSource(engineKey) {
+  const localPath = engineKey === 'gtcrn'
+    ? 'models/gtcrn_simple.onnx'
+    : MDX_MODELS[engineKey].file;
+  const localUrl = chrome.runtime.getURL(localPath);
+
+  // 1. Check if bundled locally inside chrome_extension/models/
+  try {
+    const res = await fetch(localUrl, { method: 'HEAD' });
+    if (res.ok) return localUrl;
+  } catch (_) {
+    // Not bundled locally, proceed to Cache Storage / Remote download
+  }
+
+  const remoteUrl = MDX_MODELS[engineKey]?.remoteUrl;
+  if (!remoteUrl) {
+    throw new Error(`Model file missing: ${localPath}`);
+  }
+
+  // 2. Check browser Cache Storage
+  const cache = await caches.open('music-remover-onnx-v1');
+  const cachedResp = await cache.match(remoteUrl);
+  if (cachedResp) {
+    const buf = await cachedResp.arrayBuffer();
+    return new Uint8Array(buf);
+  }
+
+  // 3. Download from Hugging Face with progress reporting to popup
+  chrome.runtime.sendMessage({
+    type: 'OFFSCREEN_STATS',
+    avgInferenceMs: 0,
+    statusText: 'Downloading model (~64 MB) 0%...',
+  }).catch(() => {});
+
+  const resp = await fetch(remoteUrl);
+  if (!resp.ok) {
+    throw new Error(`Gagal download model (${resp.status}). Jalankan setup_extension.py.`);
+  }
+
+  const total = Number(resp.headers.get('content-length')) || 66760000;
+  const reader = resp.body.getReader();
+  const chunks = [];
+  let received = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    const pct = Math.min(99, Math.round((received / total) * 100));
+    chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_STATS',
+      avgInferenceMs: 0,
+      statusText: `Downloading model (~64 MB) ${pct}%...`,
+    }).catch(() => {});
+  }
+
+  const fullBuf = new Uint8Array(received);
+  let offset = 0;
+  for (const c of chunks) {
+    fullBuf.set(c, offset);
+    offset += c.length;
+  }
+
+  // Save in Cache Storage for instant load next time
+  await cache.put(remoteUrl, new Response(fullBuf.buffer, {
+    headers: { 'Content-Type': 'application/octet-stream' },
+  }));
+
+  return fullBuf;
+}
+
 async function getSession(engineKey) {
   if (sessions[engineKey]) return sessions[engineKey];
 
   ort.env.wasm.wasmPaths = chrome.runtime.getURL('lib/');
   ort.env.wasm.numThreads = 1;
 
-  const modelPath = engineKey === 'gtcrn'
-    ? 'models/gtcrn_simple.onnx'
-    : MDX_MODELS[engineKey].file;
-  const modelUrl = chrome.runtime.getURL(modelPath);
+  const modelSource = await resolveModelSource(engineKey);
 
   // Try WebGPU first if available, then fall back to WASM
   for (const ep of ['webgpu', 'wasm']) {
     try {
-      const sess = await ort.InferenceSession.create(modelUrl, {
+      const sess = await ort.InferenceSession.create(modelSource, {
         executionProviders: [ep],
       });
       sessions[engineKey] = sess;
@@ -242,7 +313,7 @@ async function getSession(engineKey) {
       // Fallback to next provider
     }
   }
-  throw new Error(`Failed to load ONNX model: ${modelPath}`);
+  throw new Error(`Failed to initialize ONNX session for ${engineKey}`);
 }
 
 function resetGtcrnCaches() {

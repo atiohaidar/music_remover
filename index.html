@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Music Remover — Hapus Background Music Real-Time</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --bg-alt: #f7f8f7;
+      --text: #1c1f1d;
+      --muted: #525854;
+      --border: #d8ddd9;
+      --green: #15803d;
+      --green-hover: #166534;
+      --green-bg: #eef7f0;
+      --warn-bg: #fffbeb;
+      --warn-border: #d97706;
+      --code-bg: #181a19;
+      --code-fg: #e5e7e6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 15.5px;
+      line-height: 1.65;
+    }
+
+    .wrap {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 36px 20px 72px;
+    }
+
+    /* Simple Header without logo or glassmorphism */
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: baseline;
+      padding-bottom: 16px;
+      margin-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    header .site-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 14px;
+    }
+
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    nav a:hover {
+      color: var(--green);
+      text-decoration: underline;
+    }
+
+    /* Intro */
+    .intro {
+      margin-bottom: 40px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.25;
+      margin-bottom: 12px;
+    }
+
+    .intro p {
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 9px 16px;
+      border-radius: 5px;
+      font-size: 14.5px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .btn-green {
+      background: var(--green);
+      color: #ffffff;
+      border: 1px solid var(--green);
+    }
+
+    .btn-green:hover {
+      background: var(--green-hover);
+      border-color: var(--green-hover);
+    }
+
+    .btn-plain {
+      background: var(--bg-alt);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-plain:hover {
+      background: #ebeeec;
+    }
+
+    /* Headings & Sections */
+    section {
+      margin-bottom: 44px;
+    }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      padding-bottom: 6px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 18px 0 6px;
+    }
+
+    p {
+      margin-bottom: 12px;
+    }
+
+    ol, ul {
+      padding-left: 22px;
+      margin-bottom: 16px;
+    }
+
+    li {
+      margin-bottom: 8px;
+    }
+
+    a {
+      color: var(--green);
+    }
+
+    code {
+      font-family: Consolas, "JetBrains Mono", Menlo, monospace;
+      font-size: 13.5px;
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    .code-box {
+      background: var(--code-bg);
+      color: var(--code-fg);
+      border-radius: 5px;
+      padding: 12px 14px;
+      font-family: Consolas, "JetBrains Mono", Menlo, monospace;
+      font-size: 13px;
+      position: relative;
+      margin: 8px 0 14px;
+      overflow-x: auto;
+    }
+
+    .code-box pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      padding-right: 54px;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: #2c302e;
+      color: #d8ddd9;
+      border: 1px solid #454a47;
+      border-radius: 3px;
+      font-size: 11px;
+      padding: 2px 7px;
+      cursor: pointer;
+    }
+
+    .copy-btn:hover {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
+
+    /* Plain Note Box */
+    .note {
+      background: var(--bg-alt);
+      border-left: 3px solid var(--green);
+      padding: 12px 15px;
+      margin: 14px 0;
+      font-size: 14.5px;
+    }
+
+    .note.warn {
+      background: var(--warn-bg);
+      border-left-color: var(--warn-border);
+    }
+
+    .note strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    /* Simple Table */
+    .table-scroll {
+      overflow-x: auto;
+      margin-top: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 9px 11px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--bg-alt);
+      font-weight: 600;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+      font-size: 13.5px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="wrap">
+    <header>
+      <a href="#" class="site-title">Music Remover</a>
+      <nav>
+        <a href="#install-extension">Cara Pasang Extension</a>
+        <a href="#tradeoffs">Trade-Off &amp; Model</a>
+        <a href="#python-cli">Versi Python CLI</a>
+        <a href="#credits">Credits &amp; Lisensi</a>
+        <a href="https://github.com/atiohaidar/music_remover" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="intro">
+      <h1>Hapus Background Music dari Audio Video Secara Real-Time</h1>
+      <p>
+        Tool open-source untuk memisahkan dan meredam musik latar dari video (seperti YouTube) sehingga hanya menyisakan suara bicara/vokal. Tersedia dalam bentuk <strong>Chrome Extension</strong> yang langsung jalan di browser, serta <strong>Python CLI</strong> untuk memfilter seluruh audio Windows.
+      </p>
+      <div class="actions">
+        <a href="music-remover-chrome-extension.zip" download class="btn btn-green">Download Chrome Extension (.zip - 6.9 MB)</a>
+        <a href="https://github.com/atiohaidar/music_remover" target="_blank" rel="noopener" class="btn btn-plain">Lihat Source Code di GitHub</a>
+      </div>
+    </div>
+
+    <section id="install-extension">
+      <h2>Cara Pasang Chrome Extension</h2>
+      <p>
+        Versi Chrome Extension memfilter suara per-tab langsung di dalam browser tanpa perlu menginstal Virtual Audio Cable atau menjalankan Python.
+      </p>
+      <ol>
+        <li>
+          Download file <a href="music-remover-chrome-extension.zip" download><strong>music-remover-chrome-extension.zip</strong></a> lalu extract (unzip) ke folder di komputermu.
+        </li>
+        <li>
+          Buka halaman <code>chrome://extensions</code> di Google Chrome, lalu aktifkan <strong>Developer mode</strong> di pojok kanan atas.
+        </li>
+        <li>
+          Klik tombol <strong>Load unpacked</strong> di pojok kiri atas, lalu pilih folder <code>chrome_extension</code> hasil extract tadi.
+        </li>
+        <li>
+          Buka tab YouTube atau video yang ingin difilter, klik icon <strong>Music Remover</strong> di toolbar Chrome, pilih model, lalu klik <strong>Start on This Tab</strong>.
+        </li>
+      </ol>
+
+      <p style="font-size: 14px; color: var(--muted);">
+        <em>Catatan untuk developer:</em> Jika kamu melakukan <code>git clone</code> dari repositori, jalankan <code>python setup_extension.py</code> terlebih dahulu untuk mengunduh file runtime WebAssembly dan model ONNX ke dalam folder <code>chrome_extension/</code>.
+      </p>
+    </section>
+
+    <section id="tradeoffs">
+      <h2>Trade-Off &amp; Perbandingan Model</h2>
+      <p>
+        Memisahkan musik dari vokal secara real-time punya kompromi antara kualitas suara, jeda waktu (delay), dan beban CPU/GPU. Berikut hal yang perlu kamu ketahui sebelum memilih model:
+      </p>
+
+      <div class="note warn">
+        <strong>1. Beban Browser (Kenapa Chrome Bisa Nge-Lag di Model Berat?)</strong>
+        Model pemisah musik murni seperti <strong>Kim Vocal 2</strong> dan <strong>Voc_FT</strong> (~64 MB) punya komputasi yang berat. Di laptop tanpa GPU dedicated (hanya Integrated GPU / iGPU), menjalankan model sebesar ini di dalam browser (WebGPU/WASM) akan berbagi resource dengan proses rendering halaman Chrome. Jika browser terasa patah-patah, gunakan model <strong>GTCRN</strong> di extension, atau jalankan <strong>Kim Vocal 2 lewat versi Python CLI</strong>.
+      </div>
+
+      <div class="note">
+        <strong>2. Delay Suara vs Gambar Video (Lip-Sync)</strong>
+        Model MDX-Net (<code>Kim Vocal 2</code> &amp; <code>Voc_FT</code>) butuh menabung audio selama beberapa detik (<strong>Chunk Delay 1.5s – 5.9s</strong>) agar bisa memisahkan pola instrumen musik dari vokal dengan bersih. Semakin besar delay yang diatur, semakin ringan kerja CPU—tetapi suara akan terdengar beberapa detik lebih lambat dibanding gambar di video.
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th>Tersedia Di</th>
+              <th>Hasil Pemisahan Musik</th>
+              <th>Sample Rate</th>
+              <th>Delay</th>
+              <th>Beban Perangkat</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>GTCRN</strong><br /><code>gtcrn_simple.onnx</code> (523 KB)</td>
+              <td>Chrome Extension</td>
+              <td>Sedang (fokus hapus noise &amp; BGM tipis; musik ramai masih bisa bocor)</td>
+              <td>16 kHz (kualitas telepon)</td>
+              <td>~20 – 60 ms (video &amp; suara tetap sinkron)</td>
+              <td><strong>Sangat ringan.</strong> Lancar di semua laptop langsung di browser.</td>
+            </tr>
+            <tr>
+              <td><strong>Kim Vocal 2</strong><br /><code>Kim_Vocal_2.onnx</code> (63.7 MB)</td>
+              <td>Chrome Extension &amp; Python CLI</td>
+              <td><strong>Sangat bersih.</strong> Model khusus isolasi vokal (MDX-Net), musik hilang hampir total.</td>
+              <td>44.1 kHz</td>
+              <td>1.5 – 5.9 detik (saran CPU: 4.5s – 5.5s)</td>
+              <td><strong>Berat.</strong> ~3.3 detik/chunk di Python CLI (CPU). Di browser butuh PC kencang/GPU.</td>
+            </tr>
+            <tr>
+              <td><strong>UVR-MDX-NET Voc_FT</strong><br /><code>UVR-MDX-NET-Voc_FT.onnx</code> (63.7 MB)</td>
+              <td>Chrome Extension &amp; Python CLI</td>
+              <td><strong>Paling natural.</strong> Pemisahan musik bersih dengan warna vokal lebih utuh.</td>
+              <td>44.1 kHz</td>
+              <td>4.5 – 5.9 detik</td>
+              <td><strong>Paling berat (~2x Kim).</strong> ~6.8 detik/chunk di CPU-only. Disarankan pakai GPU.</td>
+            </tr>
+            <tr>
+              <td><strong>DeepFilterNet3</strong><br />PyTorch</td>
+              <td>Python CLI</td>
+              <td>Bagus (deep filtering + High-Pass 120Hz pemotong bass)</td>
+              <td>48 kHz (suara bicara paling tajam)</td>
+              <td>0.5 – 5.0 detik</td>
+              <td><strong>Menengah.</strong> Lancar dijalankan di CPU lewat Python CLI.</td>
+            </tr>
+            <tr>
+              <td><strong>DTLN</strong><br /><code>dtln_1/2.onnx</code> (3.9 MB)</td>
+              <td>Python CLI</td>
+              <td>Cukup untuk mereduksi musik latar sederhana</td>
+              <td>16 kHz</td>
+              <td>~70 – 150 ms</td>
+              <td><strong>Sangat ringan</strong> di CPU spek rendah.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="python-cli">
+      <h2>Opsi Tambahan: Versi Python CLI (Windows Desktop)</h2>
+      <p>
+        Versi Python CLI menangkap seluruh audio Windows (WASAPI Loopback) dan berjalan di atas ONNX Runtime C++ native multi-core. Opsi ini jauh lebih ringan dan stabil jika kamu ingin memakai <strong>Kim Vocal 2</strong> di laptop tanpa dedicated GPU, atau ingin memfilter suara dari aplikasi selain Chrome (VLC, Zoom, Media Player).
+      </p>
+
+      <h3>Cara Menjalankan</h3>
+      <p>
+        Di Windows, kamu bisa langsung klik dua kali file <code>run_python.bat</code>, atau jalankan lewat terminal:
+      </p>
+      <div class="code-box">
+        <button class="copy-btn" onclick="copyText(this)">Copy</button>
+        <pre>pip install -r requirements.txt
+python music_remover.py</pre>
+      </div>
+
+      <h3>Contoh Perintah Langsung</h3>
+      <div class="code-box">
+        <button class="copy-btn" onclick="copyText(this)">Copy</button>
+        <pre># Menjalankan Kim Vocal 2 dengan delay 5 detik:
+python music_remover.py --engine kimvocal --delay 5.0 --output "Headphones" --latency
+
+# Menjalankan UVR-MDX-NET Voc_FT:
+python music_remover.py --engine vocft --delay 5.5 --output "Headphones"
+
+# Menjalankan DeepFilterNet3 (48kHz):
+python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
+      </div>
+    </section>
+
+    <section id="credits">
+      <h2>Credits, Lisensi &amp; Link Asli</h2>
+      <p>
+        Project ini menggunakan model pre-trained dan library open-source berikut sesuai lisensi aslinya. File model diunduh langsung dari rilis publik masing-masing pembuat:
+      </p>
+      <ul>
+        <li>
+          <strong>Kim_Vocal_2.onnx</strong> — Dibuat oleh <a href="https://github.com/KimberleyJSN" target="_blank" rel="noopener">Kimberley Jensen (KimberleyJSN)</a> untuk ekosistem Ultimate Vocal Remover. (<a href="https://github.com/TRvlvr/model_repo/releases/tag/all_public_uvr_models" target="_blank" rel="noopener">Rilis Model Resmi</a> · <strong>MIT License</strong>)
+        </li>
+        <li>
+          <strong>UVR-MDX-NET-Voc_FT.onnx &amp; Ultimate Vocal Remover</strong> — Dikembangkan oleh Anjok07 &amp; Aufr33 di <a href="https://github.com/Anjok07/ultimatevocalremovergui" target="_blank" rel="noopener">Anjok07/ultimatevocalremovergui</a> (<a href="https://github.com/Anjok07/ultimatevocalremovergui/blob/master/LICENSE" target="_blank" rel="noopener">MIT License</a>), berbasis arsitektur <a href="https://github.com/kuielab/mdx-net" target="_blank" rel="noopener">Kuielab MDX-Net</a> (<strong>MIT License</strong>).
+        </li>
+        <li>
+          <strong>GTCRN (<code>gtcrn_simple.onnx</code>)</strong> — Riset dan arsitektur oleh Xiaobin Rong et al. di <a href="https://github.com/Xiaobin-Rong/gtcrn" target="_blank" rel="noopener">Xiaobin-Rong/gtcrn</a> (<strong>MIT License</strong>). Konversi model ONNX streaming disediakan oleh tim <a href="https://github.com/k2-fsa/sherpa-onnx" target="_blank" rel="noopener">k2-fsa/sherpa-onnx</a> (<a href="https://github.com/k2-fsa/sherpa-onnx/releases/tag/speech-enhancement-models" target="_blank" rel="noopener">Rilis Model</a> · <strong>Apache-2.0 License</strong>).
+        </li>
+        <li>
+          <strong>DeepFilterNet3</strong> — Dibuat oleh Hendrik Schröter di <a href="https://github.com/Rikorose/DeepFilterNet" target="_blank" rel="noopener">Rikorose/DeepFilterNet</a> (<a href="https://github.com/Rikorose/DeepFilterNet/blob/main/LICENSE-MIT" target="_blank" rel="noopener">MIT / Apache-2.0 License</a>).
+        </li>
+        <li>
+          <strong>DTLN (Dual-Signal Transformation LSTM Network)</strong> — Dibuat oleh Nils L. Westhausen di <a href="https://github.com/breizhn/DTLN" target="_blank" rel="noopener">breizhn/DTLN</a> (<a href="https://github.com/breizhn/DTLN/blob/master/LICENSE" target="_blank" rel="noopener">MIT License</a>).
+        </li>
+        <li>
+          <strong>ONNX Runtime &amp; PyAudioWPatch</strong> — Runtime inferensi oleh Microsoft di <a href="https://github.com/microsoft/onnxruntime" target="_blank" rel="noopener">microsoft/onnxruntime</a> (<strong>MIT License</strong>) dan ekstensi WASAPI loopback oleh s0d3s di <a href="https://github.com/s0d3s/PyAudioWPatch" target="_blank" rel="noopener">s0d3s/PyAudioWPatch</a> (<strong>MIT License</strong>).
+        </li>
+      </ul>
+    </section>
+
+    <footer>
+      Dibuat oleh <a href="https://github.com/atiohaidar/music_remover" target="_blank" rel="noopener">Atiohaidar</a> (hasil vibe coding pakai Antigravity) · Semua pemrosesan audio berjalan lokal di perangkat pengguna.
+    </footer>
+  </div>
+
+  <script>
+    function copyText(btn) {
+      const pre = btn.parentElement.querySelector('pre');
+      navigator.clipboard.writeText(pre.innerText.trim()).then(() => {
+        const old = btn.innerText;
+        btn.innerText = 'Copied';
+        setTimeout(() => { btn.innerText = old; }, 1200);
+      });
+    }
+  </script>
+</body>
+</html>

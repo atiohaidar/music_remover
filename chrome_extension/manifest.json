@@ -8,6 +8,9 @@
     "offscreen",
     "storage"
   ],
+  "host_permissions": [
+    "https://huggingface.co/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },

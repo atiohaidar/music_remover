@@ -159,11 +159,17 @@ Jika suara terdengar "patah-patah" atau vocal "muncul-tenggelam" (muncul hilang)
 4. **Mix**: Efek filter dicampur menggunakan fitur *native attenuation limit* dalam model, menghasilkan *dry/wet mix* presisi dalam spektrum frekuensi tanpa jeda phasa (menghindari suara comb-filtering/menggema).
 5. **Output**: Sinyal (sebesar 0.25 detik hop) dikirim langsung ke output.
 
-## Credits
+## Credits & Licenses
 
-- **DeepFilterNet**: [Rikorose/DeepFilterNet](https://github.com/Rikorose/DeepFilterNet)
-- **DTLN Model**: [breizhn/DTLN](https://github.com/breizhn/DTLN)
-- **PyAudioWPatch**: WASAPI loopback extension for Windows
+Project ini menggunakan model dan library open-source berikut sesuai dengan lisensi aslinya:
+
+- **Kim_Vocal_2.onnx**: Oleh [Kimberley Jensen (KimberleyJSN)](https://github.com/KimberleyJSN) — [Official UVR Model Releases](https://github.com/TRvlvr/model_repo/releases/tag/all_public_uvr_models) (**MIT License**)
+- **UVR-MDX-NET-Voc_FT.onnx & Ultimate Vocal Remover**: Oleh Anjok07 & Aufr33 ([Anjok07/ultimatevocalremovergui](https://github.com/Anjok07/ultimatevocalremovergui), [LICENSE](https://github.com/Anjok07/ultimatevocalremovergui/blob/master/LICENSE) — **MIT License**), berbasis arsitektur [Kuielab MDX-Net](https://github.com/kuielab/mdx-net) (**MIT License**)
+- **GTCRN (`gtcrn_simple.onnx`)**: Riset & arsitektur oleh Xiaobin Rong et al. ([Xiaobin-Rong/gtcrn](https://github.com/Xiaobin-Rong/gtcrn) — **MIT License**), diekspor ke ONNX oleh [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ([Model Release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/speech-enhancement-models) — **Apache-2.0 License**)
+- **DeepFilterNet3**: Oleh Hendrik Schröter ([Rikorose/DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) — **MIT / Apache-2.0 License**)
+- **DTLN Model**: Oleh Nils L. Westhausen ([breizhn/DTLN](https://github.com/breizhn/DTLN) — **MIT License**)
+- **ONNX Runtime & `onnxruntime-web`**: Oleh Microsoft ([microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) — **MIT License**)
+- **PyAudioWPatch**: WASAPI loopback extension oleh s0d3s ([s0d3s/PyAudioWPatch](https://github.com/s0d3s/PyAudioWPatch) — **MIT License**)
 
 
 Dibuat oleh antigravity
