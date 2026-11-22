@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Music Remover (GTCRN Real-Time)",
+  "version": "1.0.0",
+  "description": "100% in-browser real-time background music & noise removal for any Chrome tab using GTCRN ONNX (WASM).",
+  "permissions": [
+    "tabCapture",
+    "offscreen",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Music Remover"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  }
+}

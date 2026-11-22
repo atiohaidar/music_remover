@@ -2,9 +2,32 @@
 
 Aplikasi CLI untuk Windows yang menghilangkan background music secara real-time dari system audio, dan hanya menyisakan suara manusia (speech/dialog).
 
-Mulai versi 2.0, aplikasi ini mendukung 2 mesin pemrosesan:
-1. **DeepFilterNet (Baru, Default)**: Kualitas pemisahan instrumen/suara jauh lebih jernih, native 48kHz, menggunakan teknik overlap-add (latency ~250ms).
-2. **DTLN (Klasik)**: Sangat ringan, menggunakan ONNX, latency sangat rendah (~70ms).
+Mulai versi 2.0+, project ini mendukung **2 cara penggunaan**:
+1. **Python CLI (Windows System Audio)** — mendukung **DTLN** (`16kHz`), **DeepFilterNet3** (`48kHz`), **Kim Vocal 2** (`44.1kHz` MDX-Net), dan **UVR-MDX-NET Voc_FT** (`44.1kHz` MDX-Net) dengan pengaturan `--delay`.
+2. **Chrome Extension (100% In-Browser)** — langsung memfilter audio tab Chrome (YouTube, dll.) tanpa Python/VB-Cable menggunakan **GTCRN**, **Kim Vocal 2**, atau **UVR-MDX-NET Voc_FT** via `onnxruntime-web`.
+
+---
+
+## 🌐 Cara Pakai Chrome Extension (100% Browser)
+
+1. Jalankan script setup sekali untuk mengunduh runtime `onnxruntime-web` dan model ONNX ke `chrome_extension/`:
+   ```bash
+   python setup_extension.py
+   ```
+2. Buka `chrome://extensions` di Google Chrome dan aktifkan **Developer mode**.
+3. Klik **Load unpacked**, lalu pilih folder `chrome_extension/`.
+4. Buka tab video/YouTube, klik icon **Music Remover**, pilih model & delay, lalu klik **Start on This Tab**.
+
+---
+
+## 💻 Cara Pakai Python CLI (System Audio)
+
+Bisa langsung double-click `run_python.bat`, atau ikuti langkah manual di bawah ini.
+
+### 1. **DeepFilterNet / Kim Vocal 2 / Voc_FT**:
+   - **DTLN**: Sangat ringan, ONNX `16kHz`, latency sangat rendah (~70ms).
+   - **DeepFilterNet**: Speech enhancement `48kHz`, mendukung `--delay` untuk mengatur chunk duration.
+   - **Kim Vocal 2 & UVR-MDX-NET Voc_FT**: Pemisahan musik & vokal sejati (MDX-Net ONNX `44.1kHz`), mendukung `--delay`.
 
 ## Architecture (DeepFilterNet Mode)
 

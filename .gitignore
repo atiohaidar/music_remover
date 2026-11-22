@@ -1,2 +1,4 @@
 __pycache__/
 models/
+chrome_extension/lib/
+chrome_extension/models/
