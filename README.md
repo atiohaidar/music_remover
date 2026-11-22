@@ -99,14 +99,24 @@ Saat program berjalan, kamu bisa mengatur seberapa kuat filternya secara real-ti
 
 ## CLI Options
 
-| Flag             | Default       | Description                             |
-| ---------------- | ------------- | --------------------------------------- |
-| `--engine`       | `dtln`        | Pilih engine (`deepfilter` atau `dtln`) |
-| `--input`        | `loopback`    | Input source (WASAPI loopback)          |
-| `--output`       | `CABLE Input` | Nama output device                      |
-| `--list-devices` | -             | List semua audio device                 |
-| `--latency`      | -             | Tampilkan diagnostik latency real-time  |
-| `--quantized`    | -             | Gunakan model INT8 (hanya untuk DTLN)   |
+| Flag             | Default       | Description                                      |
+| ---------------- | ------------- | ------------------------------------------------ |
+| `--engine`       | `dtln`        | Pilih engine (`deepfilter` atau `dtln`)          |
+| `--input`        | `loopback`    | Input source (WASAPI loopback)                   |
+| `--output`       | `CABLE Input` | Nama output device                               |
+| `--list-devices` | -             | List semua audio device                          |
+| `--latency`      | -             | Tampilkan diagnostik latency real-time           |
+| `--quantized`    | -             | Gunakan model INT8 (hanya untuk DTLN)            |
+| `--post-filter`  | -             | Aktifkan post-filter (hanya untuk DeepFilterNet) |
+
+## 💡 Tips Kualitas Suara (Troubleshooting)
+
+Jika suara terdengar "patah-patah" atau vocal "muncul-tenggelam" (muncul hilang):
+
+1. **Gunakan DeepFilterNet**: DTLN hanya mendukung 16kHz (kualitas telepon). DeepFilterNet mendukung 48kHz (HD).
+2. **Kurangi Kekuatan Filter**: Jika vocal terpotong, berarti filter terlalu agresif. Tekan `-` di keyboard untuk menurunkan kekuatan ke **80% - 90%**. Ini biasanya membuat suara jauh lebih natural tapi musik tetap hilang.
+3. **Aktifkan Post-Filter**: Gunakan flag `--post-filter` jika menjalankan lewat CLI untuk kejernihan extra.
+4. **Cek Sample Rate Windows**: Pastikan Recording & Playback device kamu di Windows Sound Control Panel diatur ke **48.000 Hz (DVD/Studio Quality)** agar tidak ada distorsi resampling.
 
 ## Performance Metrics
 

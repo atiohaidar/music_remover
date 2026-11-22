@@ -8,15 +8,17 @@ audio device.
 Supported engines:
   - DTLN (default): 16kHz, ONNX Runtime — lightweight, low latency
   - DeepFilterNet: 48kHz, PyTorch — higher quality noise suppression
+  - Kim Vocal 2: 44.1kHz, ONNX Runtime — true vocal/music separation (MDX-Net)
 
 Usage:
     python music_remover.py --output "Headphones (Senary Audio)" --latency
-    python music_remover.py --engine deepfilter --output "Headphones (Senary Audio)" --latency
+    python music_remover.py --engine deepfilter --delay 2.0 --output "Headphones (Senary Audio)" --latency
+    python music_remover.py --engine kimvocal --delay 4.5 --output "Headphones (Senary Audio)" --latency
     python music_remover.py --list-devices
 
 Architecture:
     System Audio → Virtual Audio Cable → WASAPI Loopback
-    → Ring Buffer → Engine (DTLN/DeepFilterNet) → [Resample] → Stereo → Output Buffer → Speakers
+    → Ring Buffer → Engine (DTLN/DeepFilterNet/KimVocal2) → [Resample] → Stereo → Output Buffer → Speakers
 """
 
 import argparse
@@ -31,7 +33,7 @@ from ring_buffer import RingBuffer
 from audio_capture import AudioCapture, list_audio_devices
 from audio_output import AudioOutput
 from diagnostics import Diagnostics
-from resampler import resample_from_16k, mono_to_stereo
+from resampler import resample, mono_to_stereo
 
 try:
     import pyaudiowpatch as pyaudio
@@ -102,7 +104,7 @@ def processing_loop(
     model_sr = engine.sample_rate
 
     # Accumulate enhanced audio for batch resampling (better quality)
-    RESAMPLE_BATCH = 9600 if model_sr == 48000 else 2048
+    RESAMPLE_BATCH = 9600 if model_sr >= 44100 else 2048
     accum_enhanced = np.array([], dtype=np.float32)
 
     while not stop_event.is_set():
@@ -148,7 +150,7 @@ def _push_resampled(
 ):
     """Resample a large batch, convert to stereo, push to output buffer."""
     if model_sr != output_sr:
-        audio = resample_from_16k(audio, output_sr)
+        audio = resample(audio, model_sr, output_sr)
     if output_channels >= 2:
         audio = mono_to_stereo(audio).flatten()
     output_buffer.push(audio)
@@ -160,11 +162,20 @@ def interactive_setup():
     print("=" * 60)
 
     # 1. Engine selection
-    print("\n[1] Pilih Engine Noise Removal:")
+    print("\n[1] Pilih Engine Noise/Music Removal:")
     print("    1. DTLN (Cepat, Ringan, 16kHz)")
-    print("    2. DeepFilterNet (Kualitas Tinggi, 48kHz, PyTorch) [Default]")
-    engine_choice = input("    Masukkan Pilihan (1/2) [2]: ").strip()
-    engine = "dtln" if engine_choice == "1" else "deepfilter"
+    print("    2. DeepFilterNet (Speech Enhancement, 48kHz, PyTorch)")
+    print("    3. Kim Vocal 2 (Pemisahan Musik Agresif, 44.1kHz, ONNX)")
+    print("    4. UVR-MDX-NET Voc_FT (Pemisahan Musik Natural, 44.1kHz, ONNX) [Default]")
+    engine_choice = input("    Masukkan Pilihan (1/2/3/4) [4]: ").strip()
+    if engine_choice == "1":
+        engine = "dtln"
+    elif engine_choice == "2":
+        engine = "deepfilter"
+    elif engine_choice == "3":
+        engine = "kimvocal"
+    else:
+        engine = "vocft"
 
     # 2. Device selection
     print("\n[2] Pilih Output Audio Device (Speakers/Headset):")
@@ -218,6 +229,38 @@ def interactive_setup():
     lat_choice = input("    Masukkan Pilihan (y/n) [n]: ").strip().lower()
     latency = lat_choice == 'y'
 
+    # 4. Chunk processing delay (for deepfilter / mdx)
+    chunk_delay = None
+    is_mdx = engine in ("kimvocal", "vocft")
+    if engine == "deepfilter" or is_mdx:
+        default_cd = 4.5 if is_mdx else 2.0
+        print("\n[4] Atur Chunk Delay Pemrosesan (detik):")
+        print("    Makin lama delay = pemisahan musik lebih stabil & CPU lebih santai.")
+        if is_mdx:
+            print("    Rekomendasi CPU: 4.5 - 5.5 detik (GPU bisa 1.0 - 2.0 detik)")
+        else:
+            print("    Rekomendasi: 1.0 - 5.0 detik")
+        cd_input = input(f"    Masukkan chunk delay dalam detik [{default_cd}]: ").strip()
+        try:
+            chunk_delay = float(cd_input) if cd_input else default_cd
+            if chunk_delay < 0.5:
+                chunk_delay = 0.5
+        except ValueError:
+            chunk_delay = default_cd
+
+    # 5. Pre-buffer delay
+    default_prebuf = (chunk_delay + 4.0) if is_mdx else (3.0 if engine == "deepfilter" else 5.0)
+    print(f"\n[{'5' if chunk_delay is not None else '4'}] Pre-buffer Delay (detik):")
+    print("    Waktu tunggu awal sebelum audio mulai diputar.")
+    print(f"    Rekomendasi: {default_prebuf:.1f} detik")
+    delay_input = input(f"    Masukkan pre-buffer delay dalam detik [{default_prebuf:.1f}]: ").strip()
+    try:
+        prebuffer_delay = float(delay_input) if delay_input else default_prebuf
+        if prebuffer_delay < 0:
+            prebuffer_delay = default_prebuf
+    except ValueError:
+        prebuffer_delay = default_prebuf
+
     print("\n" + "=" * 60)
     print("  🚀 Memulai aplikasi dengan konfigurasi pilihanmu...")
     print("=" * 60 + "\n")
@@ -229,12 +272,15 @@ def interactive_setup():
     args.engine = engine
     args.output = out_device
     args.latency = latency
+    args.delay = chunk_delay
+    args.prebuffer_delay = prebuffer_delay
     args.input = "loopback"
     args.list_devices = False
     args.quantized = False
     args.model_dir = "models"
-    args.threads = 1
+    args.threads = 0 if is_mdx else 1
     args.buffer_size = 128
+    args.post_filter = True # Default to True in interactive for "bagus"
     args.verbose = False
     
     return args
@@ -270,9 +316,9 @@ def main():
     parser.add_argument(
         "--engine",
         type=str,
-        choices=["dtln", "deepfilter"],
+        choices=["dtln", "deepfilter", "kimvocal", "vocft"],
         default="dtln",
-        help="Speech enhancement engine: 'dtln' (default, 16kHz ONNX) or 'deepfilter' (48kHz, better quality)",
+        help="Engine: 'dtln' (16kHz), 'deepfilter' (48kHz), 'kimvocal' or 'vocft' (44.1kHz ONNX music separation)",
     )
     parser.add_argument(
         "--latency",
@@ -307,6 +353,24 @@ def main():
         action="store_true",
         help="Enable verbose output",
     )
+    parser.add_argument(
+        "--post-filter",
+        action="store_true",
+        help="Enable DeepFilterNet post-filter for better speech quality (DeepFilterNet only)",
+    )
+    parser.add_argument(
+        "--delay", "--chunk-delay",
+        dest="delay",
+        type=float,
+        default=None,
+        help="Processing chunk delay in seconds (deepfilter/kimvocal). Larger = better separation & lower CPU load.",
+    )
+    parser.add_argument(
+        "--prebuffer-delay",
+        type=float,
+        default=None,
+        help="Pre-buffer delay in seconds before starting playback",
+    )
 
     args = parser.parse_args()
 
@@ -321,9 +385,14 @@ def main():
 
     # === Initialize engine ===
     use_deepfilter = args.engine == "deepfilter"
+    use_mdx = args.engine in ("kimvocal", "vocft")
 
     if use_deepfilter:
         engine_label = "DeepFilterNet (48kHz, PyTorch)"
+    elif args.engine == "vocft":
+        engine_label = "UVR-MDX-NET Voc_FT (44.1kHz, ONNX)"
+    elif args.engine == "kimvocal":
+        engine_label = "Kim Vocal 2 (44.1kHz, ONNX MDX-Net)"
     else:
         engine_label = "DTLN (16kHz, ONNX Runtime)"
 
@@ -334,9 +403,12 @@ def main():
         print("[INIT] Loading DeepFilterNet model...")
         try:
             from inference_engine_df import DeepFilterNetEngine
-            engine = DeepFilterNetEngine()
+            engine = DeepFilterNetEngine(
+                post_filter=args.post_filter,
+                chunk_duration_s=args.delay,
+            )
             print(f"       Model: DeepFilterNet3")
-            print(f"       Chunk size: {engine.frame_size} samples ({engine.shift_duration_ms:.1f}ms)")
+            print(f"       Chunk delay: {engine.CHUNK_DURATION_S:.2f}s (hop {engine.shift_duration_ms:.1f}ms)")
             print(f"       Sample rate: {engine.sample_rate} Hz")
         except ImportError as e:
             print(f"\nERROR: DeepFilterNet not installed: {e}")
@@ -344,6 +416,39 @@ def main():
             sys.exit(1)
         except Exception as e:
             print(f"\nERROR: Failed to load DeepFilterNet: {e}")
+            sys.exit(1)
+    elif use_mdx:
+        print(f"[INIT] Loading {engine_label}...")
+        try:
+            from inference_engine_kim import KimVocalEngine
+            chunk_delay = args.delay if args.delay is not None else 4.5
+            mdx_threads = args.threads if args.threads != 1 else 0
+            try:
+                engine = KimVocalEngine(
+                    model_dir=args.model_dir,
+                    chunk_duration_s=chunk_delay,
+                    num_threads=mdx_threads,
+                    model_variant=args.engine,
+                )
+            except FileNotFoundError:
+                print(f"\n[!] Model untuk '{args.engine}' tidak ditemukan di '{args.model_dir}/'")
+                choice = input("    Download model sekarang (~64 MB)? (y/n) [y]: ").strip().lower()
+                if choice == 'n':
+                    print(f"Aborting. '{args.engine}' requires its ONNX model to run.")
+                    sys.exit(1)
+                import download_model
+                download_model.download_mdx_model(args.engine, args.model_dir)
+                engine = KimVocalEngine(
+                    model_dir=args.model_dir,
+                    chunk_duration_s=chunk_delay,
+                    num_threads=mdx_threads,
+                    model_variant=args.engine,
+                )
+            print(f"       Model: {engine.MODEL_FILENAME} ({engine.provider})")
+            print(f"       Chunk delay: {engine.frame_duration_ms/1000:.2f}s (hop {engine.shift_duration_ms/1000:.2f}s)")
+            print(f"       Sample rate: {engine.sample_rate} Hz")
+        except Exception as e:
+            print(f"\nERROR: Failed to load {engine_label}: {e}")
             sys.exit(1)
     else:
         print("[INIT] Loading DTLN ONNX model...")
@@ -386,7 +491,9 @@ def main():
     # === Start audio capture (but NOT output yet) ===
     # Determine capture chunk size based on engine
     if use_deepfilter:
-        capture_chunk = engine.frame_size  # Matches engine HOP_SIZE (12000 samples = 250ms)
+        capture_chunk = engine.frame_size  # Matches engine HOP_SIZE
+    elif use_mdx:
+        capture_chunk = 4096  # ~93ms at 44.1kHz for smooth input streaming
     else:
         capture_chunk = 512  # Keep 512 for DTLN (32ms at 16kHz) for buffer stability
 
@@ -437,13 +544,24 @@ def main():
     )
     proc_thread.start()
 
-    # === SUPER PRE-BUFFER: fill 1 second of processed audio before playing ===
+    # === SUPER PRE-BUFFER: fill processed audio before playing ===
     print("\n[INIT] Pre-buffering audio...")
-    prebuf_target = 3 if use_deepfilter else 5  # Less chunks needed at 48kHz
+    # Use user-specified delay or default
+    if args.prebuffer_delay is not None:
+        prebuf_delay = args.prebuffer_delay
+    elif use_mdx:
+        prebuf_delay = (engine.frame_duration_ms / 1000.0) + 4.0
+    else:
+        prebuf_delay = 3 if use_deepfilter else 5
+
+    if use_mdx:
+        prebuf_target = 1  # Each MDX hop is already several seconds of audio
+    else:
+        prebuf_target = 3 if use_deepfilter else 5  # Minimum chunks needed
     prebuf_start = time.time()
-    while output_buffer.size < prebuf_target and (time.time() - prebuf_start) < 5.0:
+    while output_buffer.size < prebuf_target and (time.time() - prebuf_start) < prebuf_delay:
         time.sleep(0.1)
-    print(f"       Pre-buffered {output_buffer.size} chunks")
+    print(f"       Pre-buffered {output_buffer.size} chunks (waited {time.time() - prebuf_start:.2f}s)")
 
     # === NOW start output stream ===
     try:

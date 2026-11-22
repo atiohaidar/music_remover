@@ -215,6 +215,24 @@ class DTLNInferenceEngine:
             enhanced = self.process_shift(padded, strength)
             output[i:] = enhanced[:remaining]
 
+        # --- Improved Volume Stabilization (AGC) ---
+        if len(output) > 0:
+            rms = np.sqrt(np.mean(output**2))
+            
+            if not hasattr(self, '_current_gain'): self._current_gain = 1.0
+            if not hasattr(self, '_target_rms'): self._target_rms = 0.10
+            
+            if rms > 0.005: 
+                target_gain = self._target_rms / (rms + 1e-6)
+                target_gain = np.clip(target_gain, 0.3, 4.0)
+                
+                # Slow adaptation (Release is very slow to avoid pumping)
+                alpha = 0.05 if target_gain > self._current_gain else 0.01
+                self._current_gain = (1 - alpha) * self._current_gain + alpha * target_gain
+
+            output *= self._current_gain
+            output = np.clip(output, -0.98, 0.98) # Limiter
+
         return output
 
     @property

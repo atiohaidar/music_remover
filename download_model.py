@@ -22,6 +22,43 @@ MODELS = {
     "dtln_2.onnx": f"{BASE_URL}/model_2.onnx",
 }
 
+MDX_MODELS = {
+    "kimvocal": (
+        "Kim_Vocal_2.onnx",
+        "https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx",
+    ),
+    "vocft": (
+        "UVR-MDX-NET-Voc_FT.onnx",
+        "https://huggingface.co/aaatmy/uvr-mdx-net-onnx/resolve/main/UVR-MDX-NET-Voc_FT.onnx",
+    ),
+}
+
+
+def download_mdx_model(variant: str = "kimvocal", model_dir: str = MODEL_DIR) -> str:
+    """Download an MDX-Net ONNX vocal model (~64 MB) to model_dir if missing."""
+    if variant not in MDX_MODELS:
+        raise ValueError(f"Unknown MDX model variant: {variant}")
+    filename, url = MDX_MODELS[variant]
+    os.makedirs(model_dir, exist_ok=True)
+    dest = os.path.join(model_dir, filename)
+    if os.path.exists(dest) and os.path.getsize(dest) > 10_000_000:
+        size_mb = os.path.getsize(dest) / (1024 * 1024)
+        print(f"[SKIP] {filename} already exists ({size_mb:.1f} MB)")
+        return dest
+
+    print(f"[DOWNLOAD] {filename} (~64 MB)...")
+    if not download_file(url, dest) or os.path.getsize(dest) < 10_000_000:
+        raise RuntimeError(
+            f"Failed to download {filename}. "
+            f"Download manually from {url} and place in {model_dir}/"
+        )
+    return dest
+
+
+def download_kim_vocal(model_dir: str = MODEL_DIR) -> str:
+    """Download Kim_Vocal_2.onnx (~64 MB) to model_dir if missing."""
+    return download_mdx_model("kimvocal", model_dir)
+
 
 def download_file(url: str, dest: str) -> bool:
     """Download a file from URL to destination path."""

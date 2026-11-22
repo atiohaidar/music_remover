@@ -17,7 +17,7 @@ except ImportError:
     )
 
 from ring_buffer import RingBuffer
-from resampler import resample_to_16k, stereo_to_mono
+from resampler import resample, stereo_to_mono
 
 
 def list_audio_devices(p: pyaudio.PyAudio = None) -> list[dict]:
@@ -178,7 +178,7 @@ class AudioCapture:
 
             # Resample to target sample rate
             if self._native_sr != self._target_sr:
-                audio = resample_to_16k(audio, self._native_sr)
+                audio = resample(audio, self._native_sr, self._target_sr)
 
             # Accumulate and push complete chunks
             with self._accum_lock:

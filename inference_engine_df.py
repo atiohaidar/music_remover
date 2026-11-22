@@ -31,131 +31,138 @@ class DeepFilterNetEngine:
     """
 
     SAMPLE_RATE = 48000
-    # Process 0.5s chunks (24000 samples at 48kHz)
-    CHUNK_SIZE = 24000
-    # 50% overlap = 0.25s (12000 samples)
-    OVERLAP = 12000
-    # Hop size = CHUNK_SIZE - OVERLAP
-    HOP_SIZE = CHUNK_SIZE - OVERLAP  # 12000
+    
+    # === SETTING DELAY (Ubah di sini saja) ===
+    # 0.5  = Delay rendah, akurasi ok
+    # 1.0  = Delay sedang, akurasi bagus
+    # 2.0  = Delay lama, akurasi sangat tinggi (vokal lebih stabil)
+    CHUNK_DURATION_S = 5.0
+    
+    CHUNK_SIZE = int(CHUNK_DURATION_S * SAMPLE_RATE)
+    # Gunakan 75% overlap untuk kualitas transisi terbaik
+    OVERLAP = int(CHUNK_SIZE * 0.75) 
+    HOP_SIZE = CHUNK_SIZE - OVERLAP
 
-    def __init__(self, post_filter: bool = False):
+    def __init__(self, post_filter: bool = False, chunk_duration_s: float | None = None):
         # Lazy import to avoid loading torch if not needed
         from df.enhance import init_df
 
-        # Initialize DeepFilterNet model (auto-downloads on first run)
-        self._model, self._df_state, _ = init_df()
-        self._model.eval()
-
         self._post_filter = post_filter
+        if chunk_duration_s is not None:
+            self.CHUNK_DURATION_S = max(0.5, float(chunk_duration_s))
+            self.CHUNK_SIZE = int(self.CHUNK_DURATION_S * self.SAMPLE_RATE)
+            self.OVERLAP = int(self.CHUNK_SIZE * 0.75)
+            self.HOP_SIZE = self.CHUNK_SIZE - self.OVERLAP
+
+        # Initialize DeepFilterNet model (auto-downloads on first run)
+        self._model, self._df_state, _ = init_df(post_filter=self._post_filter)
+        self._model.eval()
 
         # Internal accumulation buffer for streaming
         self._accum = np.array([], dtype=np.float32)
 
-        # Overlap-add state
-        self._prev_tail = None  # Last OVERLAP samples of previous enhanced chunk
-        self._first_chunk = True
-
-        # Pre-compute Hann crossfade windows
-        self._fade_in = np.sin(np.linspace(0, np.pi / 2, self.OVERLAP, dtype=np.float32)) ** 2
-        self._fade_out = np.cos(np.linspace(0, np.pi / 2, self.OVERLAP, dtype=np.float32)) ** 2
+        # Overlap-add state: buffer of size CHUNK_SIZE
+        self._ola_buffer = np.zeros(self.CHUNK_SIZE, dtype=np.float32)
+        # Window for OLA (Hann window is COLA compliant if hop = 1/4 or 1/2 size)
+        self._window = np.hanning(self.CHUNK_SIZE).astype(np.float32)
+        
+        # Scaling factor for COLA (Total weight at any point should be 1.0)
+        # For Hann window with 75% overlap (hop = size/4), sum is 1.5. 
+        # For 50% overlap (hop = size/2), sum is 1.0.
+        # Scale = 1.0 / (sum of windows at hop intervals)
+        self._ola_scale = 0.6666  # Approximated for 75% overlap with Hann
 
     def reset(self):
         """Reset all internal state (e.g., on audio discontinuity)."""
         self._accum = np.array([], dtype=np.float32)
-        self._prev_tail = None
-        self._first_chunk = True
+        self._ola_buffer = np.zeros(self.CHUNK_SIZE, dtype=np.float32)
         # Re-initialize model state
         from df.enhance import init_df
-        self._model, self._df_state, _ = init_df()
+        self._model, self._df_state, _ = init_df(post_filter=self._post_filter)
         self._model.eval()
 
     def _enhance_chunk(self, audio_np: np.ndarray, strength: float = 1.0) -> np.ndarray:
-        """
-        Enhance a single chunk of audio using DeepFilterNet.
-
-        Args:
-            audio_np: 1D float32 array of mono audio at 48kHz.
-            strength: Filter strength from 0.0 (bypass) to 1.0 (full).
-
-        Returns:
-            Enhanced 1D float32 array, same length as input.
-        """
         from df.enhance import enhance
+        
+        # --- Pre-processing: Light Compression & Strong HPF ---
+        # 1. Soft Compressor (Softer ratio to prevent vocal disappearing)
+        def soft_compressor(data, threshold=0.3, ratio=2.0):
+            abs_data = np.abs(data)
+            mask = abs_data > threshold
+            compressed = np.copy(data)
+            compressed[mask] = np.sign(data[mask]) * (threshold + (abs_data[mask] - threshold) / ratio)
+            return compressed
 
-        # DeepFilterNet expects shape (channels, samples) as torch tensor
-        audio_tensor = torch.from_numpy(audio_np).unsqueeze(0).float()
+        # 2. High-Pass Filter (Raised to 120Hz to KILL Bass Guitar)
+        from scipy.signal import butter, lfilter
+        def butter_highpass(cutoff, fs, order=5):
+            nyq = 0.5 * fs
+            normal_cutoff = cutoff / nyq
+            b, a = butter(order, normal_cutoff, btype='high', analog=False)
+            return b, a
 
-        # Map strength 0.0-1.0 to dB attenuation limit
-        atten_lim_db = None
-        if strength < 1.0:
-            if strength <= 0.0:
-                atten_lim_db = 0.0
-            else:
-                import math
-                # lim = 10^(-db/20) => db = -20 * log10(lim)
-                # DeepFilterNet uses lim = 1.0 - strength internally
-                atten_lim_db = -20.0 * math.log10(1.0 - strength)
+        # Apply process: Compress peaks slightly then High-pass
+        audio_proc = soft_compressor(audio_np)
+        b, a = butter_highpass(120, self.SAMPLE_RATE, order=4)
+        audio_passed = lfilter(b, a, audio_proc)
+        
+        audio_tensor = torch.from_numpy(audio_passed).unsqueeze(0).float()
 
-        # Enhance
-        enhanced_tensor = enhance(
-            self._model,
-            self._df_state,
-            audio_tensor,
-            pad=True,
-            atten_lim_db=atten_lim_db
-        )
+        # 3. Stronger Attenuation Limit (60dB = Much cleaner music removal)
+        import math
+        max_suppression = 60.0 
+        if strength >= 1.0:
+            atten_lim_db = max_suppression
+        elif strength <= 0.0:
+            atten_lim_db = 0.0
+        else:
+            atten_lim_db = strength * max_suppression
 
-        # Convert back to numpy
+        enhanced_tensor = enhance(self._model, self._df_state, audio_tensor, pad=True, atten_lim_db=atten_lim_db)
         return enhanced_tensor.squeeze(0).numpy().astype(np.float32)
 
     def process_chunk(self, chunk: np.ndarray, strength: float = 1.0) -> np.ndarray:
         """
-        Process an arbitrary-length audio chunk through DeepFilterNet.
-
-        Accumulates input audio until we have CHUNK_SIZE samples (0.5s),
-        then enhances with 50% overlap-add crossfade for seamless output.
-
-        Args:
-            chunk: Audio data, float32, mono, at 48kHz. Any length.
-            strength: Filter strength from 0.0 to 1.0.
-
-        Returns:
-            Enhanced audio, float32. May be empty if still accumulating.
+        Process with 75% overlap-add.
+        Each CHUNK_SIZE (500ms) output is windowed and added to OLA buffer.
+        We then pop HOP_SIZE (125ms) of finalized audio.
         """
-        # Accumulate incoming audio
         self._accum = np.concatenate([self._accum, chunk])
-
-        # Process when we have enough
         output_parts = []
 
         while len(self._accum) >= self.CHUNK_SIZE:
-            # Extract one full chunk
             process_buf = self._accum[:self.CHUNK_SIZE].copy()
-            # Advance by HOP_SIZE (not CHUNK_SIZE) to create overlap
             self._accum = self._accum[self.HOP_SIZE:]
 
-            # Enhance this chunk (apply dry/wet internally)
             enhanced = self._enhance_chunk(process_buf, strength)
+            
+            # Apply Window and Add to OLA buffer
+            self._ola_buffer += enhanced * self._window * self._ola_scale
 
-            if self._first_chunk:
-                # First chunk: output everything except the tail (which overlaps with next)
-                output_parts.append(enhanced[:self.HOP_SIZE])
-                self._prev_tail = enhanced[self.HOP_SIZE:].copy()
-                self._first_chunk = False
-            else:
-                # Crossfade: blend prev_tail with current chunk's head
-                head = enhanced[:self.OVERLAP]
-                blended = self._prev_tail * self._fade_out + head * self._fade_in
-                # Output: blended region + middle (non-overlapping part)
-                output_parts.append(blended)
-                # The non-overlapping middle part (if any) - for 50% overlap there's none
-                # Save tail for next overlap
-                self._prev_tail = enhanced[self.HOP_SIZE:].copy()
+            # Extract finalized hop
+            final_hop = self._ola_buffer[:self.HOP_SIZE].copy()
+            output_parts.append(final_hop)
+
+            # Shift OLA buffer
+            self._ola_buffer[: -self.HOP_SIZE] = self._ola_buffer[self.HOP_SIZE :]
+            self._ola_buffer[-self.HOP_SIZE :] = 0
 
         if output_parts:
-            return np.concatenate(output_parts)
-        else:
-            return np.array([], dtype=np.float32)
+            out = np.concatenate(output_parts)
+            # --- AGC Logic ---
+            if len(out) > 0:
+                rms = np.sqrt(np.mean(out**2))
+                if not hasattr(self, '_current_gain'): self._current_gain = 1.0
+                if not hasattr(self, '_target_rms'): self._target_rms = 0.10
+                if rms > 0.005: 
+                    target_gain = self._target_rms / (rms + 1e-6)
+                    target_gain = np.clip(target_gain, 0.3, 4.0)
+                    alpha = 0.05 if target_gain > self._current_gain else 0.01 
+                    self._current_gain = (1 - alpha) * self._current_gain + alpha * target_gain
+                out *= self._current_gain
+                out = np.clip(out, -0.98, 0.98) 
+            return out
+        return np.array([], dtype=np.float32)
 
     @property
     def frame_size(self) -> int:
@@ -179,5 +186,5 @@ class DeepFilterNetEngine:
 
     @property
     def frame_duration_ms(self) -> float:
-        """Duration of one full processing chunk in ms (500ms)."""
+        """Duration of one full processing chunk in ms (2000ms)."""
         return self.CHUNK_SIZE / self.SAMPLE_RATE * 1000.0
