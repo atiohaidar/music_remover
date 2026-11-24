@@ -27,6 +27,10 @@ MDX_MODELS = {
         "Kim_Vocal_2.onnx",
         "https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx",
     ),
+    "kimvocal_fp16": (
+        "Kim_Vocal_2_fp16.onnx",
+        "https://raw.githubusercontent.com/atiohaidar/music_remover/main/web/models/Kim_Vocal_2_fp16.onnx",
+    ),
     "vocft": (
         "UVR-MDX-NET-Voc_FT.onnx",
         "https://huggingface.co/aaatmy/uvr-mdx-net-onnx/resolve/main/UVR-MDX-NET-Voc_FT.onnx",

@@ -1,3 +1,4 @@
+
 """
 Kim Vocal 2 (MDX-Net) ONNX Inference Engine for real-time music removal.
 
@@ -37,7 +38,12 @@ class KimVocalEngine:
         "kimvocal": {
             "filename": "Kim_Vocal_2.onnx",
             "compensate": 1.009,
-            "label": "Kim Vocal 2",
+            "label": "Kim Vocal 2 (FP32)",
+        },
+        "kimvocal_fp16": {
+            "filename": "Kim_Vocal_2_fp16.onnx",
+            "compensate": 1.009,
+            "label": "Kim Vocal 2 (FP16)",
         },
         "vocft": {
             "filename": "UVR-MDX-NET-Voc_FT.onnx",

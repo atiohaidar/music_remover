@@ -31,6 +31,7 @@ ORT_FILES = [
 MODELS = {
     "gtcrn_simple.onnx": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx",
     "Kim_Vocal_2.onnx": "https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx",
+    "Kim_Vocal_2_fp16.onnx": "https://raw.githubusercontent.com/atiohaidar/music_remover/main/web/models/Kim_Vocal_2_fp16.onnx",
     "UVR-MDX-NET-Voc_FT.onnx": "https://huggingface.co/aaatmy/uvr-mdx-net-onnx/resolve/main/UVR-MDX-NET-Voc_FT.onnx",
 }
 
@@ -58,9 +59,13 @@ def main():
     for fname, url in MODELS.items():
         dest = os.path.join(EXT_MODELS_DIR, fname)
         local_py = os.path.join(PY_MODELS_DIR, fname)
+        local_web = os.path.join(ROOT_DIR, "web", "models", fname)
         if not os.path.exists(dest) and os.path.exists(local_py):
-            print(f"  [COPY] {fname} from models/")
+            print(f"  [COPY] {fname} from cli/models/")
             shutil.copy2(local_py, dest)
+        elif not os.path.exists(dest) and os.path.exists(local_web):
+            print(f"  [COPY] {fname} from web/models/")
+            shutil.copy2(local_web, dest)
         else:
             download_if_missing(url, dest, min_bytes=100_000)
 

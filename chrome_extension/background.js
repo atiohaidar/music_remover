@@ -1,3 +1,4 @@
+
 // Background Service Worker (Manifest V3)
 // Coordinates tabCapture streamId creation and offscreen audio processing.
 
@@ -6,8 +7,9 @@ const OFFSCREEN_URL = 'offscreen.html';
 let state = {
   active: false,
   tabId: null,
-  engine: 'kimvocal', // 'kimvocal' | 'vocft' | 'gtcrn'
-  delaySec: 4.5,
+  engine: 'kimvocal', // 'kimvocal' | 'kimvocal_fp16' | 'vocft' | 'gtcrn'
+  backendMode: 'webgpu', // 'webgpu' | 'wasm'
+  delaySec: 5.5,
   strength: 1.0,
   avgInferenceMs: 0,
   provider: '',
@@ -38,11 +40,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const {
           tabId,
           engine = 'kimvocal',
-          delaySec = 4.5,
+          backendMode = 'webgpu',
+          delaySec = 5.5,
           strength = 1.0,
         } = msg;
 
         state.engine = engine;
+        state.backendMode = backendMode;
         state.delaySec = delaySec;
         state.strength = strength;
         state.error = null;
@@ -50,7 +54,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         state.statusText = 'Loading model...';
 
         if (state.active) {
-          await chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP' }).catch(() => {});
+          await chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP' }).catch(() => { });
         }
 
         await ensureOffscreenDocument();
@@ -60,6 +64,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           type: 'OFFSCREEN_START',
           streamId,
           engine,
+          backendMode,
           delaySec,
           strength,
         });
@@ -80,7 +85,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       }
 
       if (msg.type === 'STOP_CAPTURE') {
-        await chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP' }).catch(() => {});
+        await chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP' }).catch(() => { });
         state.active = false;
         state.tabId = null;
         state.avgInferenceMs = 0;
@@ -92,6 +97,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (msg.type === 'SET_CONFIG') {
         if (!state.active) {
           if (msg.engine) state.engine = msg.engine;
+          if (msg.backendMode) state.backendMode = msg.backendMode;
           if (msg.delaySec !== undefined) state.delaySec = msg.delaySec;
         }
         sendResponse({ ok: true, state });
@@ -104,7 +110,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           await chrome.runtime.sendMessage({
             type: 'OFFSCREEN_STRENGTH',
             strength: msg.strength,
-          }).catch(() => {});
+          }).catch(() => { });
         }
         sendResponse({ ok: true, state });
         return;

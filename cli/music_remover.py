@@ -165,15 +165,18 @@ def interactive_setup():
     print("\n[1] Pilih Engine Noise/Music Removal:")
     print("    1. DTLN (Cepat, Ringan, 16kHz)")
     print("    2. DeepFilterNet (Speech Enhancement, 48kHz, PyTorch)")
-    print("    3. Kim Vocal 2 (Pemisahan Musik Agresif, 44.1kHz, ONNX)")
-    print("    4. UVR-MDX-NET Voc_FT (Pemisahan Musik Natural, 44.1kHz, ONNX) [Default]")
-    engine_choice = input("    Masukkan Pilihan (1/2/3/4) [4]: ").strip()
+    print("    3. Kim Vocal 2 FP32 (Pemisahan Musik Agresif, 44.1kHz, ONNX)")
+    print("    4. Kim Vocal 2 FP16 (Hemat Memori ~32MB, 44.1kHz, ONNX)")
+    print("    5. UVR-MDX-NET Voc_FT (Pemisahan Musik Natural, 44.1kHz, ONNX) [Default]")
+    engine_choice = input("    Masukkan Pilihan (1/2/3/4/5) [5]: ").strip()
     if engine_choice == "1":
         engine = "dtln"
     elif engine_choice == "2":
         engine = "deepfilter"
     elif engine_choice == "3":
         engine = "kimvocal"
+    elif engine_choice == "4":
+        engine = "kimvocal_fp16"
     else:
         engine = "vocft"
 
@@ -231,7 +234,7 @@ def interactive_setup():
 
     # 4. Chunk processing delay (for deepfilter / mdx)
     chunk_delay = None
-    is_mdx = engine in ("kimvocal", "vocft")
+    is_mdx = engine in ("kimvocal", "kimvocal_fp16", "vocft")
     if engine == "deepfilter" or is_mdx:
         default_cd = 4.5 if is_mdx else 2.0
         print("\n[4] Atur Chunk Delay Pemrosesan (detik):")
@@ -316,9 +319,9 @@ def main():
     parser.add_argument(
         "--engine",
         type=str,
-        choices=["dtln", "deepfilter", "kimvocal", "vocft"],
+        choices=["dtln", "deepfilter", "kimvocal", "kimvocal_fp16", "vocft"],
         default="dtln",
-        help="Engine: 'dtln' (16kHz), 'deepfilter' (48kHz), 'kimvocal' or 'vocft' (44.1kHz ONNX music separation)",
+        help="Engine: 'dtln' (16kHz), 'deepfilter' (48kHz), 'kimvocal', 'kimvocal_fp16', or 'vocft' (44.1kHz ONNX)",
     )
     parser.add_argument(
         "--latency",
@@ -385,14 +388,16 @@ def main():
 
     # === Initialize engine ===
     use_deepfilter = args.engine == "deepfilter"
-    use_mdx = args.engine in ("kimvocal", "vocft")
+    use_mdx = args.engine in ("kimvocal", "kimvocal_fp16", "vocft")
 
     if use_deepfilter:
         engine_label = "DeepFilterNet (48kHz, PyTorch)"
     elif args.engine == "vocft":
         engine_label = "UVR-MDX-NET Voc_FT (44.1kHz, ONNX)"
+    elif args.engine == "kimvocal_fp16":
+        engine_label = "Kim Vocal 2 FP16 (44.1kHz, ONNX MDX-Net)"
     elif args.engine == "kimvocal":
-        engine_label = "Kim Vocal 2 (44.1kHz, ONNX MDX-Net)"
+        engine_label = "Kim Vocal 2 FP32 (44.1kHz, ONNX MDX-Net)"
     else:
         engine_label = "DTLN (16kHz, ONNX Runtime)"
 

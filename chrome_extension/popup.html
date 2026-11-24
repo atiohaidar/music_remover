@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8" />
   <style>
@@ -11,19 +12,23 @@
       background: #0f172a;
       color: #f8fafc;
     }
+
     h1 {
       font-size: 16px;
       margin: 0 0 4px 0;
       color: #38bdf8;
     }
+
     .subtitle {
       font-size: 11px;
       color: #94a3b8;
       margin-bottom: 14px;
     }
+
     .control {
       margin-top: 12px;
     }
+
     .label-row {
       display: flex;
       justify-content: space-between;
@@ -31,6 +36,7 @@
       margin-bottom: 4px;
       color: #cbd5e1;
     }
+
     select {
       width: 100%;
       padding: 8px;
@@ -40,10 +46,12 @@
       color: #f8fafc;
       font-size: 12px;
     }
+
     input[type="range"] {
       width: 100%;
       accent-color: #38bdf8;
     }
+
     button {
       width: 100%;
       margin-top: 14px;
@@ -55,11 +63,30 @@
       cursor: pointer;
       transition: background 0.15s;
     }
-    button.start { background: #0284c7; color: #fff; }
-    button.start:hover { background: #0369a1; }
-    button.stop { background: #dc2626; color: #fff; }
-    button.stop:hover { background: #b91c1c; }
-    button:disabled { opacity: 0.6; cursor: wait; }
+
+    button.start {
+      background: #0284c7;
+      color: #fff;
+    }
+
+    button.start:hover {
+      background: #0369a1;
+    }
+
+    button.stop {
+      background: #dc2626;
+      color: #fff;
+    }
+
+    button.stop:hover {
+      background: #b91c1c;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
     .status {
       margin-top: 12px;
       padding: 8px 10px;
@@ -69,12 +96,14 @@
       color: #94a3b8;
       line-height: 1.4;
     }
+
     .status.error {
       color: #fca5a5;
       background: #450a0a;
     }
   </style>
 </head>
+
 <body>
   <h1>Music Remover</h1>
   <div class="subtitle">100% Browser · WebGPU / WASM ONNX</div>
@@ -84,18 +113,29 @@
       <span>Model Engine</span>
     </div>
     <select id="engineSelect">
-      <option value="kimvocal">Kim Vocal 2 (44.1kHz · High Quality)</option>
+      <option value="kimvocal">Kim Vocal 2 (44.1kHz · FP32 Original)</option>
+      <option value="kimvocal_fp16">Kim Vocal 2 FP16 (44.1kHz · Hemat GPU ~32MB)</option>
       <option value="vocft">UVR-MDX-NET Voc_FT (44.1kHz · Natural)</option>
       <option value="gtcrn">GTCRN (16kHz · No Delay)</option>
+    </select>
+  </div>
+
+  <div class="control">
+    <div class="label-row">
+      <span>Mode Eksekusi</span>
+    </div>
+    <select id="backendSelect">
+      <option value="webgpu" selected>Auto WebGPU + WASM (GPU · Default)</option>
+      <option value="wasm">WebAssembly CPU (Khusus GTCRN)</option>
     </select>
   </div>
 
   <div id="delayControl" class="control">
     <div class="label-row">
       <span>Chunk Delay</span>
-      <span id="delayVal">4.5 s</span>
+      <span id="delayVal">5.5 s</span>
     </div>
-    <input id="delaySlider" type="range" min="1.5" max="5.9" step="0.5" value="4.5" />
+    <input id="delaySlider" type="range" min="1.5" max="5.9" step="0.5" value="5.5" />
   </div>
 
   <div class="control">
@@ -112,4 +152,5 @@
 
   <script src="popup.js"></script>
 </body>
+
 </html>

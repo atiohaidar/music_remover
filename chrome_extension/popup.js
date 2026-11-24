@@ -1,5 +1,6 @@
 const toggleBtn = document.getElementById('toggleBtn');
 const engineSelect = document.getElementById('engineSelect');
+const backendSelect = document.getElementById('backendSelect');
 const delayControl = document.getElementById('delayControl');
 const delaySlider = document.getElementById('delaySlider');
 const delayVal = document.getElementById('delayVal');
@@ -19,6 +20,7 @@ function render(state, syncInputs = false) {
   currentActive = !!state.active;
   if (syncInputs || currentActive || !initializedFromState) {
     if (state.engine) engineSelect.value = state.engine;
+    if (state.backendMode) backendSelect.value = state.backendMode;
     if (state.delaySec) {
       delaySlider.value = state.delaySec;
       delayVal.textContent = `${Number(state.delaySec).toFixed(1)} s`;
@@ -30,6 +32,7 @@ function render(state, syncInputs = false) {
   }
 
   engineSelect.disabled = currentActive;
+  backendSelect.disabled = currentActive;
   delaySlider.disabled = currentActive;
   updateDelayVisibility();
 
@@ -39,9 +42,12 @@ function render(state, syncInputs = false) {
   } else if (currentActive) {
     statusBox.className = 'status';
     const prov = state.provider ? ` [${state.provider.toUpperCase()}]` : '';
+    const defaultWait = state.engine === 'gtcrn'
+      ? ' · Processing...'
+      : ` · Buffering ~${Number(state.delaySec || 4.5).toFixed(0)}s...`;
     let timing = state.statusText && state.statusText !== 'Active'
       ? ` · ${state.statusText}`
-      : ' · Buffering...';
+      : defaultWait;
     if (state.avgInferenceMs > 0) {
       timing = state.engine === 'gtcrn'
         ? ` · ${state.avgInferenceMs.toFixed(1)} ms / 16 ms`
@@ -65,6 +71,10 @@ async function refreshStatus(syncInputs = false) {
 engineSelect.addEventListener('change', () => {
   updateDelayVisibility();
   chrome.runtime.sendMessage({ type: 'SET_CONFIG', engine: engineSelect.value }).catch(() => {});
+});
+
+backendSelect.addEventListener('change', () => {
+  chrome.runtime.sendMessage({ type: 'SET_CONFIG', backendMode: backendSelect.value }).catch(() => {});
 });
 
 delaySlider.addEventListener('input', () => {
@@ -94,6 +104,7 @@ toggleBtn.addEventListener('click', async () => {
     } else {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const engine = engineSelect.value;
+      const backendMode = backendSelect.value;
       const delaySec = Number(delaySlider.value);
       const strength = Number(strengthSlider.value) / 100;
 
@@ -101,13 +112,14 @@ toggleBtn.addEventListener('click', async () => {
         type: 'START_CAPTURE',
         tabId: tab.id,
         engine,
+        backendMode,
         delaySec,
         strength,
       });
       if (resp?.ok) {
         render(resp.state);
       } else {
-        render({ active: false, engine, delaySec, strength, error: resp?.error || 'Failed to start' });
+        render({ active: false, engine, backendMode, delaySec, strength, error: resp?.error || 'Failed to start' });
       }
     }
   } finally {
