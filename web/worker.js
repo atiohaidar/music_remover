@@ -373,6 +373,8 @@ async function runGtcrnOffline(mono16k, backendMode) {
       self.postMessage({
         type: 'PROGRESS',
         percent: pct,
+        stepDone: frameIdx + 1,
+        stepTotal: totalFrames,
         text: `Memproses dengan GTCRN (${provider.toUpperCase()})... ${pct}%`,
       });
     }
@@ -475,6 +477,8 @@ async function runMdxOffline(left, right, modelKey, backendMode) {
     self.postMessage({
       type: 'PROGRESS',
       percent: Math.round((c / numChunks) * 100),
+      stepDone: c,
+      stepTotal: numChunks,
       text: `Memproses segmen ${c + 1}/${numChunks} (${provider.toUpperCase()})...`,
     });
 
@@ -556,6 +560,8 @@ async function runMdxOffline(left, right, modelKey, backendMode) {
     self.postMessage({
       type: 'PROGRESS',
       percent: Math.round(((c + 1) / numChunks) * 100),
+      stepDone: c + 1,
+      stepTotal: numChunks,
       text: `Segmen ${c + 1}/${numChunks} selesai (${provider.toUpperCase()})`,
     });
   }

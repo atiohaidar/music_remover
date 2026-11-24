@@ -470,31 +470,91 @@
       }
     }
 
-    .media-compare {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-      margin-bottom: 16px;
-    }
 
-    @media (max-width: 640px) {
-      .media-compare {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .media-card {
+    .unified-player-card {
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 5px;
-      padding: 12px;
+      padding: 12px 14px;
+      margin-bottom: 14px;
     }
 
-    .media-card-title {
+    .player-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .mode-indicator {
       font-size: 13px;
       font-weight: 600;
-      margin-bottom: 8px;
       color: var(--muted);
+    }
+
+    .ab-toggle {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      overflow: hidden;
+      background: var(--bg-alt);
+    }
+
+    .ab-btn {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      padding: 5px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+    .ab-btn+.ab-btn {
+      border-left: 1px solid var(--border);
+    }
+
+    .ab-btn:hover:not(.active) {
+      color: var(--text);
+      background: #ebeeec;
+    }
+
+    .ab-btn.active {
+      background: var(--green);
+      color: #ffffff;
+    }
+
+    .preview-banner {
+      display: none;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: var(--warn-bg);
+      border: 1px solid #f59e0b;
+      border-radius: 5px;
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      font-size: 13.5px;
+    }
+
+    .preview-banner.visible {
+      display: flex;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    .download-format-select {
+      width: auto;
+      min-width: 230px;
+      padding: 8.5px 10px;
+      font-size: 14px;
     }
 
     audio,
@@ -656,24 +716,25 @@
           <div>
             <label for="modelSelect">Pilih Model Pemisah Musik</label>
             <select id="modelSelect">
-              <option value="kimvocal">Kim Vocal 2 (44.1kHz Stereo · Original FP32, ~64 MB)</option>
-              <option value="kimvocal_fp16">Kim Vocal 2 FP16 (44.1kHz Stereo · Hemat VRAM GPU, ~32 MB)</option>
-              <option value="vocft">UVR-MDX-NET Voc_FT (44.1kHz Stereo · Paling Natural, ~64 MB)</option>
-              <option value="gtcrn">GTCRN (16kHz · Super Cepat, 523 KB)</option>
+              <option value="kimvocal">Kim Vocal 2 (44.1kHz Stereo · FP32, ~64 MB)</option>
+              <option value="kimvocal_fp16">Kim Vocal 2 FP16 (44.1kHz Stereo · FP16, ~32 MB)</option>
+              <option value="vocft">UVR-MDX-NET Voc_FT (44.1kHz Stereo · FP32, ~64 MB)</option>
+              <option value="gtcrn">GTCRN (16kHz Mono · 523 KB)</option>
             </select>
           </div>
 
           <div>
             <label for="backendSelect">Mode Eksekusi Browser</label>
             <select id="backendSelect">
-              <option value="wasm">WebAssembly CPU (Paling Stabil)</option>
-              <option value="webgpu">Auto WebGPU + WASM (Lebih Cepat jika GPU Mendukung)</option>
+              <option value="wasm">WebAssembly (CPU)</option>
+              <option value="webgpu">WebGPU + Fallback WASM (GPU / CPU)</option>
             </select>
           </div>
         </div>
 
         <div class="actions">
           <button id="processBtn" class="btn btn-green" disabled>Mulai Proses</button>
+          <button id="preview15Btn" class="btn btn-plain" disabled>Coba 15 Detik Pertama</button>
           <button id="cancelBtn" class="btn btn-plain" style="display: none;">Batalkan</button>
           <a href="#install-extension" class="btn btn-plain">Mau pakai di YouTube langsung? Install Extension</a>
         </div>
@@ -698,6 +759,23 @@
           <h3 id="resultTitle">Selesai!</h3>
         </div>
 
+        <div id="previewBanner" class="preview-banner">
+          <span>Ini hasil uji coba <strong>15 detik pertama</strong>. Sudah cocok dengan kualitas pemisahannya?</span>
+          <button type="button" id="processFullAfterPreviewBtn" class="btn btn-green btn-sm">Proses Full File
+            Sekarang</button>
+        </div>
+
+        <div class="unified-player-card">
+          <div class="player-toolbar">
+            <span id="activeModeBadge" class="mode-indicator">Mode: Tanpa Musik (100%)</span>
+            <div class="ab-toggle" role="group" aria-label="Bandingkan Suara">
+              <button type="button" id="abCleanBtn" class="ab-btn active">Tanpa Musik</button>
+              <button type="button" id="abOrigBtn" class="ab-btn">Suara Asli</button>
+            </div>
+          </div>
+          <div id="unifiedMediaWrap"></div>
+        </div>
+
         <div class="mix-control">
           <div class="mix-label">
             <span>Filter Strength (Campur Suara Asli vs Bersih)</span>
@@ -705,25 +783,17 @@
           </div>
           <input id="strengthSlider" type="range" min="0" max="100" value="100" />
           <div style="font-size: 12.5px; color: var(--muted); margin-top: 4px;">
-            Geser ke 80%–90% jika suara bicara terasa agak tipis agar terdengar lebih natural.
-          </div>
-        </div>
-
-        <div class="media-compare">
-          <div class="media-card">
-            <div class="media-card-title">Asli (Dengan Musik)</div>
-            <div id="origPreview"></div>
-          </div>
-          <div class="media-card">
-            <div class="media-card-title">Hasil (Musik Dihapus)</div>
-            <div id="cleanPreview"></div>
+            Geser sambil memutar (misal ke 80%–90%) untuk mengatur proporsi campuran suara asli dan vokal hasil
+            pemisahan.
           </div>
         </div>
 
         <div class="actions">
-          <a id="downloadBtn" class="btn btn-green" href="#" download>Download Hasil</a>
-          <button id="remuxBtn" class="btn btn-plain" style="display: none;">Terapkan Filter Strength ke Video
-            Download</button>
+          <button type="button" id="downloadBtn" class="btn btn-green">Download Hasil</button>
+          <select id="downloadFormatSelect" class="download-format-select" aria-label="Format Download Audio">
+            <option value="wav">Format: WAV (PCM Tanpa Kompresi)</option>
+            <option value="mp3">Format: MP3 (192 kbps)</option>
+          </select>
         </div>
       </div>
 
@@ -787,19 +857,20 @@
 
       <div class="note warn">
         <strong>1. Proses File (di atas) vs Live Chrome Extension</strong>
-        Di mode <strong>Proses File di atas</strong>, suara &amp; gambar video hasilnya pasti sinkron 100% dan tidak
-        putus-putus karena diproses sampai selesai sebelum diputar. Sedangkan di mode <strong>Chrome Extension (Live
-          Tab)</strong>, model berat seperti <strong>Kim Vocal 2</strong> dan <strong>Voc_FT</strong> (~64 MB) bisa
-        bikin browser nge-lag di laptop tanpa dedicated GPU—untuk live di extension yang paling enteng adalah
-        <strong>GTCRN</strong>, atau gunakan <strong>Python CLI</strong>.
+        Di mode <strong>Proses File di atas</strong>, seluruh durasi file diproses terlebih dahulu sebelum diputar
+        ulang.
+        Sedangkan di mode <strong>Chrome Extension (Live Tab)</strong>, pemrosesan dilakukan sambil video berjalan
+        sehingga model berukuran besar seperti <strong>Kim Vocal 2</strong> dan <strong>Voc_FT</strong> (~64 MB) dapat
+        membebani CPU/GPU pada perangkat tanpa dedicated GPU. Untuk beban komputasi lebih rendah tersedia opsi
+        <strong>GTCRN</strong> (523 KB) atau <strong>Python CLI</strong>.
       </div>
 
       <div class="note">
         <strong>2. Delay Suara vs Gambar Video di Mode Live (Lip-Sync)</strong>
         Saat memakai Chrome Extension atau Python CLI dengan model MDX-Net (<code>Kim Vocal 2</code> &amp;
-        <code>Voc_FT</code>), model butuh menabung audio selama beberapa detik (<strong>Chunk Delay 1.5s –
-          5.9s</strong>). Semakin besar delay yang diatur, semakin ringan kerja CPU—tetapi suara akan terdengar beberapa
-        detik lebih lambat dibanding gambar di video.
+        <code>Voc_FT</code>), model mengumpulkan potongan audio selama beberapa detik (<strong>Chunk Delay 1.5s –
+          5.9s</strong>). Semakin besar nilai delay, frekuensi inferensi per detik berkurang—namun suara akan terdengar
+        beberapa detik lebih lambat dibanding gambar video.
       </div>
 
       <div class="table-scroll">
@@ -808,53 +879,52 @@
             <tr>
               <th>Model</th>
               <th>Tersedia Di</th>
-              <th>Hasil Pemisahan Musik</th>
+              <th>Karakteristik Pemisahan</th>
               <th>Sample Rate</th>
               <th>Delay (Mode Live)</th>
-              <th>Beban Perangkat</th>
+              <th>Beban Komputasi</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td><strong>GTCRN</strong><br /><code>gtcrn_simple.onnx</code> (523 KB)</td>
               <td>Web Tool &amp; Chrome Extension</td>
-              <td>Sedang (fokus hapus noise &amp; BGM tipis; musik ramai masih bisa bocor)</td>
-              <td>16 kHz (kualitas telepon)</td>
-              <td>~20 – 60 ms (video &amp; suara tetap sinkron)</td>
-              <td><strong>Sangat ringan.</strong> Lancar di semua laptop dan HP.</td>
+              <td>Reduksi noise &amp; musik latar tipis; musik berintensitas tinggi masih dapat terdengar</td>
+              <td>16 kHz Mono</td>
+              <td>~20 – 60 ms</td>
+              <td>Rendah (~5.5 ms per frame 16 ms di WASM)</td>
             </tr>
             <tr>
-              <td><strong>Kim Vocal 2</strong><br /><code>Kim_Vocal_2.onnx</code> (63.7 MB)</td>
+              <td><strong>Kim Vocal 2</strong><br /><code>Kim_Vocal_2.onnx</code> (63.7 MB / FP16 31.9 MB)</td>
               <td>Web Tool, Chrome Extension &amp; Python CLI</td>
-              <td><strong>Sangat bersih.</strong> Model khusus isolasi vokal (MDX-Net), musik hilang hampir total.</td>
-              <td>44.1 kHz</td>
-              <td>1.5 – 5.9 detik (saran CPU: 4.5s – 5.5s)</td>
-              <td><strong>Berat.</strong> ~3.3 detik/chunk di Python CLI (CPU). Di web proses file aman di CPU, di live
-                extension butuh GPU/PC kencang.</td>
+              <td>Isolasi vokal berbasis arsitektur MDX-Net</td>
+              <td>44.1 kHz Stereo</td>
+              <td>1.5 – 5.9 detik</td>
+              <td>Tinggi (~3.3 detik/chunk di Python CLI CPU; di browser bergantung pada GPU/CPU)</td>
             </tr>
             <tr>
               <td><strong>UVR-MDX-NET Voc_FT</strong><br /><code>UVR-MDX-NET-Voc_FT.onnx</code> (63.7 MB)</td>
               <td>Web Tool, Chrome Extension &amp; Python CLI</td>
-              <td><strong>Paling natural.</strong> Pemisahan musik bersih dengan warna vokal lebih utuh.</td>
-              <td>44.1 kHz</td>
+              <td>Isolasi vokal berbasis arsitektur MDX-Net (varian Voc_FT)</td>
+              <td>44.1 kHz Stereo</td>
               <td>4.5 – 5.9 detik</td>
-              <td><strong>Paling berat (~2x Kim).</strong> ~6.8 detik/chunk di CPU-only.</td>
+              <td>Tinggi (~2x waktu komputasi Kim Vocal 2, ~6.8 detik/chunk di CPU)</td>
             </tr>
             <tr>
               <td><strong>DeepFilterNet3</strong><br />PyTorch</td>
               <td>Python CLI</td>
-              <td>Bagus (deep filtering + High-Pass 120Hz pemotong bass)</td>
-              <td>48 kHz (suara bicara paling tajam)</td>
+              <td>Speech enhancement + filter High-Pass 120 Hz</td>
+              <td>48 kHz</td>
               <td>0.5 – 5.0 detik</td>
-              <td><strong>Menengah.</strong> Lancar dijalankan di CPU lewat Python CLI.</td>
+              <td>Menengah (dijalankan lewat Python CLI)</td>
             </tr>
             <tr>
               <td><strong>DTLN</strong><br /><code>dtln_1/2.onnx</code> (3.9 MB)</td>
               <td>Python CLI</td>
-              <td>Cukup untuk mereduksi musik latar sederhana</td>
-              <td>16 kHz</td>
+              <td>Reduksi noise &amp; musik latar sederhana</td>
+              <td>16 kHz Mono</td>
               <td>~70 – 150 ms</td>
-              <td><strong>Sangat ringan</strong> di CPU spek rendah.</td>
+              <td>Rendah (3.9 MB)</td>
             </tr>
           </tbody>
         </table>
@@ -865,10 +935,10 @@
     <section id="python-cli">
       <h2>Opsi Tambahan: Versi Python CLI (Windows Desktop)</h2>
       <p>
-        Versi Python CLI menangkap seluruh audio Windows (WASAPI Loopback) dan berjalan di atas ONNX Runtime C++ native
-        multi-core. Opsi ini jauh lebih ringan dan stabil jika kamu ingin memakai <strong>Kim Vocal 2</strong> secara
-        live di laptop tanpa dedicated GPU, atau ingin memfilter suara dari aplikasi selain Chrome (VLC, Zoom, Media
-        Player).
+        Versi Python CLI menangkap audio sistem Windows (WASAPI Loopback) dan berjalan di atas ONNX Runtime C++ native
+        multi-core. Opsi ini dapat digunakan untuk menjalankan model secara live lewat terminal atau memfilter suara
+        dari
+        aplikasi selain Chrome (VLC, Zoom, Media Player).
       </p>
 
       <h3>Cara Menjalankan</h3>
@@ -979,6 +1049,7 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
     const modelSelect = document.getElementById('modelSelect');
     const backendSelect = document.getElementById('backendSelect');
     const processBtn = document.getElementById('processBtn');
+    const preview15Btn = document.getElementById('preview15Btn');
     const cancelBtn = document.getElementById('cancelBtn');
     const progressWrap = document.getElementById('progressWrap');
     const progressFill = document.getElementById('progressFill');
@@ -986,32 +1057,114 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
     const elapsedText = document.getElementById('elapsedText');
     const resultBox = document.getElementById('resultBox');
     const resultTitle = document.getElementById('resultTitle');
-    const origPreview = document.getElementById('origPreview');
-    const cleanPreview = document.getElementById('cleanPreview');
+    const previewBanner = document.getElementById('previewBanner');
+    const processFullAfterPreviewBtn = document.getElementById('processFullAfterPreviewBtn');
+    const activeModeBadge = document.getElementById('activeModeBadge');
+    const abCleanBtn = document.getElementById('abCleanBtn');
+    const abOrigBtn = document.getElementById('abOrigBtn');
+    const unifiedMediaWrap = document.getElementById('unifiedMediaWrap');
     const downloadBtn = document.getElementById('downloadBtn');
-    const remuxBtn = document.getElementById('remuxBtn');
+    const downloadFormatSelect = document.getElementById('downloadFormatSelect');
     const strengthSlider = document.getElementById('strengthSlider');
     const strengthVal = document.getElementById('strengthVal');
 
     let selectedFile = null;
+    let selectedDurationSec = null;
+    let durationProbeToken = 0;
     let isVideoFile = false;
+    let isProcessing = false;
+    let lastProcessedPreviewSec = null;
     let worker = null;
     let ffmpegInstance = null;
     let elapsedTimer = null;
     let processStartMs = 0;
+    let inferenceStartMs = 0;
+    let etaRemainingSec = null;
+    let etaUpdatedAtMs = 0;
 
     let origChannels = null;
     let cleanChannels = null;
     let outputSampleRate = 44100;
-    let origObjectUrl = null;
-    let cleanObjectUrl = null;
+    let cachedVideoMux = null; // { strength, previewSec, blob, outName }
+
+    const MODEL_CACHE_KEYS = {
+      kimvocal: 'https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx',
+      kimvocal_fp16: 'music-remover-local/Kim_Vocal_2_fp16.onnx',
+      vocft: 'https://huggingface.co/aaatmy/uvr-mdx-net-onnx/resolve/main/UVR-MDX-NET-Voc_FT.onnx',
+    };
+
+    const previewMixer = {
+      ctx: null,
+      origGain: null,
+      cleanGain: null,
+      mainEl: null,
+      cleanEl: null,
+      abMode: 'clean',
+      ownedUrls: [],
+    };
 
     const DEFAULT_DROP_TITLE = 'Klik untuk pilih file Audio atau Video (atau tarik ke sini)';
     const DEFAULT_DROP_SUB = 'Mendukung MP3, WAV, M4A, MP4, WebM, MOV (disarankan < 300–400 MB)';
 
+    // Save base model option labels and mark cached models
+    for (const opt of modelSelect.options) {
+      opt.dataset.baseLabel = opt.textContent;
+    }
+
+    async function refreshModelCacheLabels() {
+      for (const opt of modelSelect.options) {
+        if (opt.value === 'gtcrn') {
+          opt.textContent = `${opt.dataset.baseLabel} · Lokal`;
+        }
+      }
+      if (!('caches' in window)) return;
+      try {
+        const cache = await caches.open('music-remover-web-onnx-v1');
+        for (const opt of modelSelect.options) {
+          const key = MODEL_CACHE_KEYS[opt.value];
+          if (!key) continue;
+          const hit = await cache.match(key);
+          opt.textContent = hit
+            ? `${opt.dataset.baseLabel} · ✓ Tersimpan`
+            : opt.dataset.baseLabel;
+        }
+      } catch (_) {
+        // Ignore CacheStorage errors in restricted/incognito contexts
+      }
+    }
+    refreshModelCacheLabels();
+
     function checkIsVideo(file) {
       if (file.type && file.type.startsWith('video/')) return true;
       return /\.(mp4|webm|mkv|mov|avi|m4v)$/i.test(file.name);
+    }
+
+    function formatMediaDuration(sec) {
+      if (!Number.isFinite(sec) || sec <= 0) return '';
+      const total = Math.round(sec);
+      const hrs = Math.floor(total / 3600);
+      const mins = Math.floor((total % 3600) / 60);
+      const secs = total % 60;
+      if (hrs > 0) {
+        return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      }
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function updateActionButtonsState() {
+      if (!selectedFile || isProcessing) {
+        processBtn.disabled = true;
+        preview15Btn.disabled = true;
+        return;
+      }
+      processBtn.disabled = false;
+      if (selectedDurationSec !== null && selectedDurationSec <= 16) {
+        preview15Btn.style.display = 'none';
+        preview15Btn.disabled = true;
+      } else {
+        preview15Btn.style.display = 'inline-block';
+        preview15Btn.disabled = false;
+      }
     }
 
     function updateDropzoneDisplay() {
@@ -1023,24 +1176,52 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
         return;
       }
       const sizeMb = (selectedFile.size / (1024 * 1024)).toFixed(2);
+      const durLabel = selectedDurationSec ? ` · ${formatMediaDuration(selectedDurationSec)}` : '';
       dropTitle.textContent = selectedFile.name;
       dropSub.textContent = 'Klik atau tarik file lain untuk mengganti';
-      filePill.textContent = `${isVideoFile ? 'VIDEO' : 'AUDIO'} · ${sizeMb} MB`;
+      filePill.textContent = `${isVideoFile ? 'VIDEO' : 'AUDIO'}${durLabel} · ${sizeMb} MB`;
       filePill.style.display = 'inline-block';
       dropzone.classList.add('has-file');
+    }
+
+    function probeFileDuration(file) {
+      const token = ++durationProbeToken;
+      selectedDurationSec = null;
+      const probeUrl = URL.createObjectURL(file);
+      const el = document.createElement(checkIsVideo(file) ? 'video' : 'audio');
+      el.preload = 'metadata';
+      const cleanup = () => {
+        el.removeAttribute('src');
+        el.load();
+        URL.revokeObjectURL(probeUrl);
+      };
+      el.onloadedmetadata = () => {
+        if (token === durationProbeToken && Number.isFinite(el.duration) && el.duration > 0) {
+          selectedDurationSec = el.duration;
+          updateDropzoneDisplay();
+          updateActionButtonsState();
+        }
+        cleanup();
+      };
+      el.onerror = () => {
+        cleanup();
+      };
+      el.src = probeUrl;
     }
 
     function handleFileSelect(file) {
       if (!file) return;
       selectedFile = file;
       isVideoFile = checkIsVideo(file);
+      cachedVideoMux = null;
+      probeFileDuration(file);
       updateDropzoneDisplay();
+      updateActionButtonsState();
 
       dropzone.classList.remove('just-dropped');
       void dropzone.offsetWidth;
       dropzone.classList.add('just-dropped');
 
-      processBtn.disabled = false;
       resultBox.classList.remove('show');
     }
 
@@ -1074,19 +1255,62 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
       return `${mins}:${secs}`;
     }
 
+    function formatEta(sec) {
+      if (!sec || sec <= 0) return '';
+      if (sec < 60) return `~${sec} dtk lagi`;
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return s > 0 ? `~${m}m ${s}s lagi` : `~${m}m lagi`;
+    }
+
+    function renderElapsedAndEta() {
+      const base = formatElapsed(Date.now() - processStartMs);
+      if (etaRemainingSec !== null && etaRemainingSec > 0) {
+        const dec = Math.floor((Date.now() - etaUpdatedAtMs) / 1000);
+        const liveRem = Math.max(1, etaRemainingSec - dec);
+        elapsedText.textContent = `${base} · ${formatEta(liveRem)}`;
+      } else {
+        elapsedText.textContent = base;
+      }
+    }
+
     function startElapsedTimer() {
       stopElapsedTimer();
       processStartMs = Date.now();
+      inferenceStartMs = 0;
+      etaRemainingSec = null;
+      etaUpdatedAtMs = 0;
       elapsedText.textContent = '00:00';
-      elapsedTimer = setInterval(() => {
-        elapsedText.textContent = formatElapsed(Date.now() - processStartMs);
-      }, 500);
+      elapsedTimer = setInterval(renderElapsedAndEta, 500);
     }
 
     function stopElapsedTimer() {
       if (elapsedTimer) {
         clearInterval(elapsedTimer);
         elapsedTimer = null;
+      }
+      etaRemainingSec = null;
+      if (processStartMs > 0) {
+        elapsedText.textContent = formatElapsed(Date.now() - processStartMs);
+      }
+    }
+
+    function updateEtaFromProgress(msg) {
+      const now = Date.now();
+      if (!inferenceStartMs) {
+        inferenceStartMs = now;
+        return;
+      }
+      const frac = msg.stepTotal
+        ? msg.stepDone / msg.stepTotal
+        : (msg.percent || 0) / 100;
+      const elapsedSec = (now - inferenceStartMs) / 1000;
+      if (frac > 0.01 && frac < 0.999 && elapsedSec >= 0.5) {
+        etaRemainingSec = Math.max(1, Math.round((elapsedSec / frac) * (1 - frac)));
+        etaUpdatedAtMs = now;
+        renderElapsedAndEta();
+      } else if (frac >= 0.999) {
+        etaRemainingSec = null;
       }
     }
 
@@ -1192,14 +1416,15 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
       return ffmpeg;
     }
 
-    async function decodeViaWebAudio(file, targetSr, targetCh) {
+    async function decodeViaWebAudio(file, targetSr, targetCh, maxDurationSec = null) {
       setProgress(10, 'Membaca dan meresample audio di browser...');
       const arrBuf = await file.arrayBuffer();
       const tmpCtx = new AudioContext();
       const decoded = await tmpCtx.decodeAudioData(arrBuf);
       await tmpCtx.close();
 
-      const targetFrames = Math.max(1, Math.ceil(decoded.duration * targetSr));
+      const clipDur = maxDurationSec ? Math.min(decoded.duration, maxDurationSec) : decoded.duration;
+      const targetFrames = Math.max(1, Math.ceil(clipDur * targetSr));
       const offline = new OfflineAudioContext(targetCh, targetFrames, targetSr);
       const src = offline.createBufferSource();
       src.buffer = decoded;
@@ -1214,18 +1439,22 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
       return { channels, sampleRate: targetSr };
     }
 
-    async function extractAudioViaFFmpeg(file, targetSr, targetCh) {
+    async function extractAudioViaFFmpeg(file, targetSr, targetCh, maxDurationSec = null) {
       const ffmpeg = await getFFmpeg();
-      setProgress(15, 'Mengekstrak track audio dari file...');
+      setProgress(15, maxDurationSec
+        ? `Mengekstrak ${maxDurationSec} detik pertama track audio...`
+        : 'Mengekstrak track audio dari file...');
       const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '.mp4';
       const inputName = `input${ext}`;
       await ffmpeg.writeFile(inputName, new Uint8Array(await file.arrayBuffer()));
       await ffmpeg.exec([
         '-y', '-i', inputName,
+        ...(maxDurationSec ? ['-t', String(maxDurationSec)] : []),
         '-vn', '-ac', String(targetCh), '-ar', String(targetSr),
         '-f', 'wav', 'extracted.wav'
       ]);
       const wavBytes = await ffmpeg.readFile('extracted.wav');
+      try { await ffmpeg.deleteFile('extracted.wav'); } catch (_) { }
       return parseWav(wavBytes);
     }
 
@@ -1242,7 +1471,7 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
       });
     }
 
-    async function remuxVideoWithStrength(strength) {
+    async function remuxVideoWithStrength(strength, maxDurationSec = null) {
       const ffmpeg = await getFFmpeg();
       setProgress(92, 'Menggabungkan vokal bersih ke video asli (-c:v copy)...');
       const mixed = getMixedChannels(strength);
@@ -1253,63 +1482,286 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
       const inputName = `input${ext}`;
       const isWebm = /\.webm$/i.test(selectedFile.name);
       const outName = isWebm ? 'output.webm' : 'output.mp4';
+      const durArgs = maxDurationSec ? ['-t', String(maxDurationSec)] : [];
       const args = isWebm
-        ? ['-y', '-i', inputName, '-i', 'vocals.wav', '-c:v', 'copy', '-c:a', 'libopus', '-map', '0:v:0', '-map', '1:a:0', '-shortest', outName]
-        : ['-y', '-i', inputName, '-i', 'vocals.wav', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-map', '0:v:0', '-map', '1:a:0', '-shortest', outName];
+        ? ['-y', '-i', inputName, '-i', 'vocals.wav', ...durArgs, '-c:v', 'copy', '-c:a', 'libopus', '-map', '0:v:0', '-map', '1:a:0', '-shortest', outName]
+        : ['-y', '-i', inputName, '-i', 'vocals.wav', ...durArgs, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-map', '0:v:0', '-map', '1:a:0', '-shortest', outName];
 
       await ffmpeg.exec(args);
       const outBytes = await ffmpeg.readFile(outName);
+      try { await ffmpeg.deleteFile('vocals.wav'); } catch (_) { }
+      try { await ffmpeg.deleteFile(outName); } catch (_) { }
       const mime = isWebm ? 'video/webm' : 'video/mp4';
-      return { blob: new Blob([outBytes], { type: mime }), outName };
+      const blob = new Blob([outBytes], { type: mime });
+      cachedVideoMux = { strength, previewSec: maxDurationSec, blob, outName };
+      return { blob, outName };
     }
 
-    function refreshAudioPreview() {
-      if (isVideoFile || !cleanChannels) return;
-      const strength = Number(strengthSlider.value) / 100;
-      const mixed = getMixedChannels(strength);
-      const wavBytes = encodeWav(mixed, outputSampleRate);
-      const blob = new Blob([wavBytes], { type: 'audio/wav' });
-      if (cleanObjectUrl) URL.revokeObjectURL(cleanObjectUrl);
-      cleanObjectUrl = URL.createObjectURL(blob);
-
-      cleanPreview.innerHTML = `<audio controls src="${cleanObjectUrl}"></audio>`;
-      const baseName = selectedFile.name.replace(/\.[^/.]+$/, '');
-      downloadBtn.href = cleanObjectUrl;
-      downloadBtn.download = `${baseName}_vocals.wav`;
+    async function buildTrimmedOriginalVideoBlob(maxDurationSec) {
+      const ffmpeg = await getFFmpeg();
+      const ext = selectedFile.name.includes('.') ? selectedFile.name.slice(selectedFile.name.lastIndexOf('.')) : '.mp4';
+      const inputName = `input${ext}`;
+      const trimName = `orig_trim${ext}`;
+      await ffmpeg.exec(['-y', '-i', inputName, '-t', String(maxDurationSec), '-c', 'copy', trimName]);
+      const bytes = await ffmpeg.readFile(trimName);
+      try { await ffmpeg.deleteFile(trimName); } catch (_) { }
+      return new Blob([bytes], { type: selectedFile.type || 'video/mp4' });
     }
+
+    // ===================== Unified Real-Time A/B & Gain Mixer =====================
+    function destroyPreviewMixer() {
+      if (previewMixer.mainEl) {
+        try { previewMixer.mainEl.pause(); } catch (_) { }
+        previewMixer.mainEl.removeAttribute('src');
+      }
+      if (previewMixer.cleanEl) {
+        try { previewMixer.cleanEl.pause(); } catch (_) { }
+        previewMixer.cleanEl.removeAttribute('src');
+      }
+      if (previewMixer.ctx) {
+        previewMixer.ctx.close().catch(() => { });
+      }
+      for (const u of previewMixer.ownedUrls) {
+        URL.revokeObjectURL(u);
+      }
+      previewMixer.ctx = null;
+      previewMixer.origGain = null;
+      previewMixer.cleanGain = null;
+      previewMixer.mainEl = null;
+      previewMixer.cleanEl = null;
+      previewMixer.ownedUrls = [];
+      unifiedMediaWrap.innerHTML = '';
+    }
+
+    function applyMixerGains() {
+      const pct = Number(strengthSlider.value);
+      const s = pct / 100;
+      const isOrig = previewMixer.abMode === 'orig';
+      const dry = isOrig ? 1.0 : (1.0 - s);
+      const wet = isOrig ? 0.0 : s;
+
+      if (previewMixer.origGain && previewMixer.cleanGain) {
+        previewMixer.origGain.gain.value = dry;
+        previewMixer.cleanGain.gain.value = wet;
+      }
+
+      abCleanBtn.classList.toggle('active', !isOrig);
+      abOrigBtn.classList.toggle('active', isOrig);
+      activeModeBadge.textContent = isOrig
+        ? 'Sedang diputar: Suara Asli (Dengan Musik)'
+        : `Sedang diputar: Tanpa Musik (Strength ${pct}%)`;
+    }
+
+    function setupUnifiedPreview({ isVideo, mainSrcUrl, cleanWavUrl, ownedUrls }) {
+      destroyPreviewMixer();
+      previewMixer.ownedUrls = ownedUrls || [];
+      previewMixer.abMode = 'clean';
+
+      const mainEl = document.createElement(isVideo ? 'video' : 'audio');
+      mainEl.controls = true;
+      mainEl.preload = 'auto';
+      mainEl.playsInline = true;
+      mainEl.src = mainSrcUrl;
+
+      const cleanEl = document.createElement('audio');
+      cleanEl.preload = 'auto';
+      cleanEl.src = cleanWavUrl;
+      cleanEl.style.display = 'none';
+
+      unifiedMediaWrap.appendChild(mainEl);
+      unifiedMediaWrap.appendChild(cleanEl);
+
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      const origSrc = ctx.createMediaElementSource(mainEl);
+      const cleanSrc = ctx.createMediaElementSource(cleanEl);
+      const origGain = ctx.createGain();
+      const cleanGain = ctx.createGain();
+
+      origSrc.connect(origGain).connect(ctx.destination);
+      cleanSrc.connect(cleanGain).connect(ctx.destination);
+
+      previewMixer.ctx = ctx;
+      previewMixer.origGain = origGain;
+      previewMixer.cleanGain = cleanGain;
+      previewMixer.mainEl = mainEl;
+      previewMixer.cleanEl = cleanEl;
+
+      const syncCleanTime = () => {
+        if (!Number.isFinite(mainEl.currentTime)) return;
+        const maxT = Number.isFinite(cleanEl.duration) && cleanEl.duration > 0
+          ? Math.max(0, cleanEl.duration - 0.01)
+          : mainEl.currentTime;
+        cleanEl.currentTime = Math.min(mainEl.currentTime, maxT);
+      };
+
+      mainEl.addEventListener('play', () => {
+        if (ctx.state === 'suspended') ctx.resume().catch(() => { });
+        cleanEl.playbackRate = mainEl.playbackRate;
+        cleanEl.volume = mainEl.volume;
+        cleanEl.muted = mainEl.muted;
+        syncCleanTime();
+        cleanEl.play().catch(() => { });
+      });
+
+      mainEl.addEventListener('pause', () => {
+        cleanEl.pause();
+      });
+
+      mainEl.addEventListener('ended', () => {
+        cleanEl.pause();
+        cleanEl.currentTime = 0;
+      });
+
+      mainEl.addEventListener('seeking', syncCleanTime);
+      mainEl.addEventListener('seeked', syncCleanTime);
+
+      mainEl.addEventListener('ratechange', () => {
+        cleanEl.playbackRate = mainEl.playbackRate;
+      });
+
+      mainEl.addEventListener('volumechange', () => {
+        cleanEl.volume = mainEl.volume;
+        cleanEl.muted = mainEl.muted;
+      });
+
+      mainEl.addEventListener('timeupdate', () => {
+        if (lastProcessedPreviewSec && Number.isFinite(cleanEl.duration) && cleanEl.duration > 0 && mainEl.currentTime >= cleanEl.duration) {
+          mainEl.pause();
+          mainEl.currentTime = 0;
+          cleanEl.currentTime = 0;
+          return;
+        }
+        if (!mainEl.paused) {
+          if (cleanEl.paused && (!Number.isFinite(cleanEl.duration) || mainEl.currentTime < cleanEl.duration - 0.05)) {
+            cleanEl.play().catch(() => { });
+          }
+          if (Math.abs(cleanEl.currentTime - mainEl.currentTime) > 0.08) {
+            syncCleanTime();
+          }
+        }
+      });
+
+      applyMixerGains();
+    }
+
+    abCleanBtn.addEventListener('click', () => {
+      previewMixer.abMode = 'clean';
+      if (previewMixer.ctx && previewMixer.ctx.state === 'suspended') {
+        previewMixer.ctx.resume().catch(() => { });
+      }
+      applyMixerGains();
+    });
+
+    abOrigBtn.addEventListener('click', () => {
+      previewMixer.abMode = 'orig';
+      if (previewMixer.ctx && previewMixer.ctx.state === 'suspended') {
+        previewMixer.ctx.resume().catch(() => { });
+      }
+      applyMixerGains();
+    });
 
     strengthSlider.addEventListener('input', () => {
       strengthVal.textContent = `${strengthSlider.value}%`;
-      if (!isVideoFile) {
-        refreshAudioPreview();
-      } else if (cleanChannels) {
-        if (remuxBtn.style.display === 'none') {
-          remuxBtn.style.display = 'inline-block';
-          remuxBtn.classList.add('attention');
-        }
+      if (previewMixer.abMode !== 'clean') {
+        previewMixer.abMode = 'clean';
       }
+      applyMixerGains();
     });
 
-    remuxBtn.addEventListener('click', async () => {
-      remuxBtn.disabled = true;
-      startElapsedTimer();
+    function triggerBlobDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+
+    async function encodeAudioMp3Blob(mixedChannels, sampleRate) {
+      const ffmpeg = await getFFmpeg();
+      const wavBytes = encodeWav(mixedChannels, sampleRate);
+      await ffmpeg.writeFile('mix_dl.wav', wavBytes);
+      let outFile = 'out_dl.mp3';
+      let mime = 'audio/mpeg';
+      let ext = '.mp3';
+      await ffmpeg.exec([
+        '-y', '-i', 'mix_dl.wav',
+        '-codec:a', 'libmp3lame', '-b:a', '192k',
+        outFile,
+      ]);
+      let outBytes;
       try {
-        const strength = Number(strengthSlider.value) / 100;
-        const { blob, outName } = await remuxVideoWithStrength(strength);
-        if (cleanObjectUrl) URL.revokeObjectURL(cleanObjectUrl);
-        cleanObjectUrl = URL.createObjectURL(blob);
-        cleanPreview.innerHTML = `<video controls src="${cleanObjectUrl}"></video>`;
-        const baseName = selectedFile.name.replace(/\.[^/.]+$/, '');
-        const outExt = outName.slice(outName.lastIndexOf('.'));
-        downloadBtn.href = cleanObjectUrl;
-        downloadBtn.download = `${baseName}_no_music${outExt}`;
-        setProgress(100, 'Video diperbarui dengan Filter Strength baru!', false, false);
-        remuxBtn.style.display = 'none';
+        outBytes = await ffmpeg.readFile(outFile);
+      } catch (_) {
+        outBytes = null;
+      }
+      if (!outBytes || outBytes.byteLength < 128) {
+        outFile = 'out_dl.m4a';
+        mime = 'audio/mp4';
+        ext = '.m4a';
+        await ffmpeg.exec([
+          '-y', '-i', 'mix_dl.wav',
+          '-c:a', 'aac', '-b:a', '192k',
+          outFile,
+        ]);
+        outBytes = await ffmpeg.readFile(outFile);
+      }
+      try { await ffmpeg.deleteFile('mix_dl.wav'); } catch (_) { }
+      try { await ffmpeg.deleteFile(outFile); } catch (_) { }
+      return { blob: new Blob([outBytes], { type: mime }), ext };
+    }
+
+    downloadBtn.addEventListener('click', async () => {
+      if (!cleanChannels || !selectedFile) return;
+      const strength = Number(strengthSlider.value) / 100;
+      const rawBase = selectedFile.name.replace(/\.[^/.]+$/, '');
+      const baseName = lastProcessedPreviewSec ? `${rawBase}_15s` : rawBase;
+      const oldLabel = downloadBtn.textContent;
+
+      downloadBtn.disabled = true;
+      try {
+        if (isVideoFile) {
+          let blob;
+          let outName;
+          if (
+            cachedVideoMux &&
+            Math.abs(cachedVideoMux.strength - strength) < 0.001 &&
+            cachedVideoMux.previewSec === lastProcessedPreviewSec
+          ) {
+            blob = cachedVideoMux.blob;
+            outName = cachedVideoMux.outName;
+          } else {
+            downloadBtn.textContent = `Menyiapkan Video (${Math.round(strength * 100)}%)...`;
+            const muxed = await remuxVideoWithStrength(strength, lastProcessedPreviewSec);
+            blob = muxed.blob;
+            outName = muxed.outName;
+            setProgress(100, 'Video berhasil disiapkan sesuai Filter Strength!', false, false);
+          }
+          const outExt = outName.slice(outName.lastIndexOf('.'));
+          triggerBlobDownload(blob, `${baseName}_no_music${outExt}`);
+        } else {
+          const fmt = downloadFormatSelect.value;
+          const mixed = getMixedChannels(strength);
+          if (fmt === 'mp3') {
+            downloadBtn.textContent = 'Mengonversi ke MP3...';
+            setProgress(95, 'Mengonversi audio ke MP3 (192 kbps)...', false, true);
+            const { blob, ext } = await encodeAudioMp3Blob(mixed, outputSampleRate);
+            setProgress(100, `File ${ext.toUpperCase().slice(1)} siap diunduh!`, false, false);
+            triggerBlobDownload(blob, `${baseName}_no_music${ext}`);
+          } else {
+            const wavBytes = encodeWav(mixed, outputSampleRate);
+            const blob = new Blob([wavBytes], { type: 'audio/wav' });
+            triggerBlobDownload(blob, `${baseName}_no_music.wav`);
+          }
+        }
       } catch (err) {
-        setProgress(0, `Error: ${err.message}`, true, false);
+        setProgress(0, `Error saat menyiapkan download: ${err.message}`, true, false);
       } finally {
-        stopElapsedTimer();
-        remuxBtn.disabled = false;
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = oldLabel;
       }
     });
 
@@ -1319,20 +1771,25 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
       statusText.textContent = 'Membatalkan...';
     });
 
-    processBtn.addEventListener('click', async () => {
-      if (!selectedFile) return;
+    async function runProcess(maxDurationSec = null) {
+      if (!selectedFile || isProcessing) return;
 
-      processBtn.disabled = true;
-      processBtn.textContent = 'Sedang Memproses...';
+      isProcessing = true;
+      lastProcessedPreviewSec = maxDurationSec;
+      cachedVideoMux = null;
+      updateActionButtonsState();
+
+      if (maxDurationSec) {
+        preview15Btn.textContent = 'Memproses 15 Detik...';
+      } else {
+        processBtn.textContent = 'Sedang Memproses...';
+      }
       cancelBtn.style.display = 'inline-block';
       cancelBtn.disabled = false;
       resultBox.classList.remove('show');
-      remuxBtn.style.display = 'none';
+      previewBanner.classList.remove('visible');
+      destroyPreviewMixer();
       startElapsedTimer();
-
-      if (origObjectUrl) URL.revokeObjectURL(origObjectUrl);
-      if (cleanObjectUrl) URL.revokeObjectURL(cleanObjectUrl);
-      origObjectUrl = URL.createObjectURL(selectedFile);
 
       const modelKey = modelSelect.value;
       const backendMode = backendSelect.value;
@@ -1342,12 +1799,12 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
       try {
         let decoded;
         if (isVideoFile) {
-          decoded = await extractAudioViaFFmpeg(selectedFile, targetSr, targetCh);
+          decoded = await extractAudioViaFFmpeg(selectedFile, targetSr, targetCh, maxDurationSec);
         } else {
           try {
-            decoded = await decodeViaWebAudio(selectedFile, targetSr, targetCh);
+            decoded = await decodeViaWebAudio(selectedFile, targetSr, targetCh, maxDurationSec);
           } catch (_) {
-            decoded = await extractAudioViaFFmpeg(selectedFile, targetSr, targetCh);
+            decoded = await extractAudioViaFFmpeg(selectedFile, targetSr, targetCh, maxDurationSec);
           }
         }
 
@@ -1368,6 +1825,7 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
             if (msg.type === 'STATUS') {
               setProgress(20, msg.text);
             } else if (msg.type === 'PROGRESS') {
+              updateEtaFromProgress(msg);
               const overall = 20 + Math.round(msg.percent * 0.70);
               setProgress(overall, msg.text);
             } else if (msg.type === 'DONE') {
@@ -1385,25 +1843,63 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
           }, transfers);
         });
 
+        refreshModelCacheLabels();
+
         cleanChannels = result.channels;
         outputSampleRate = result.sampleRate;
         strengthSlider.value = 100;
         strengthVal.textContent = '100%';
 
-        const baseName = selectedFile.name.replace(/\.[^/.]+$/, '');
+        // Build 100%-wet clean WAV URL for real-time WebAudio gain mixing
+        const cleanWavBytes = encodeWav(cleanChannels, outputSampleRate);
+        const cleanWavUrl = URL.createObjectURL(new Blob([cleanWavBytes], { type: 'audio/wav' }));
+        const ownedUrls = [cleanWavUrl];
+
+        const suffixLabel = maxDurationSec ? ' (Preview 15 Detik)' : '';
         if (isVideoFile) {
-          origPreview.innerHTML = `<video controls src="${origObjectUrl}"></video>`;
-          const { blob, outName } = await remuxVideoWithStrength(1.0);
-          cleanObjectUrl = URL.createObjectURL(blob);
-          cleanPreview.innerHTML = `<video controls src="${cleanObjectUrl}"></video>`;
-          const outExt = outName.slice(outName.lastIndexOf('.'));
-          downloadBtn.href = cleanObjectUrl;
-          downloadBtn.download = `${baseName}_no_music${outExt}`;
-          resultTitle.textContent = `Selesai (${result.provider.toUpperCase()}) — Video Tanpa Musik Siap Diunduh`;
+          downloadFormatSelect.style.display = 'none';
+          downloadBtn.textContent = maxDurationSec ? 'Download Video 15 Detik' : 'Download Video Tanpa Musik';
+
+          let videoPreviewSrcUrl;
+          if (maxDurationSec) {
+            try {
+              const trimmedBlob = await buildTrimmedOriginalVideoBlob(maxDurationSec);
+              videoPreviewSrcUrl = URL.createObjectURL(trimmedBlob);
+            } catch (_) {
+              videoPreviewSrcUrl = URL.createObjectURL(selectedFile);
+            }
+          } else {
+            videoPreviewSrcUrl = URL.createObjectURL(selectedFile);
+          }
+          ownedUrls.push(videoPreviewSrcUrl);
+
+          await remuxVideoWithStrength(1.0, maxDurationSec);
+          setupUnifiedPreview({
+            isVideo: true,
+            mainSrcUrl: videoPreviewSrcUrl,
+            cleanWavUrl,
+            ownedUrls,
+          });
+          resultTitle.textContent = `Selesai (${result.provider.toUpperCase()})${suffixLabel} — Video Tanpa Musik Siap`;
         } else {
-          origPreview.innerHTML = `<audio controls src="${origObjectUrl}"></audio>`;
-          refreshAudioPreview();
-          resultTitle.textContent = `Selesai (${result.provider.toUpperCase()}) — Audio Bersih Siap Diunduh`;
+          downloadFormatSelect.style.display = 'inline-block';
+          downloadBtn.textContent = maxDurationSec ? 'Download Audio 15 Detik' : 'Download Audio Bersih';
+
+          const origWavBytes = encodeWav(origChannels, outputSampleRate);
+          const origWavUrl = URL.createObjectURL(new Blob([origWavBytes], { type: 'audio/wav' }));
+          ownedUrls.push(origWavUrl);
+
+          setupUnifiedPreview({
+            isVideo: false,
+            mainSrcUrl: origWavUrl,
+            cleanWavUrl,
+            ownedUrls,
+          });
+          resultTitle.textContent = `Selesai (${result.provider.toUpperCase()})${suffixLabel} — Audio Bersih Siap`;
+        }
+
+        if (maxDurationSec) {
+          previewBanner.classList.add('visible');
         }
 
         setProgress(100, 'Proses selesai 100% di browser!', false, false);
@@ -1414,11 +1910,17 @@ python music_remover.py --engine deepfilter --delay 2.0 --post-filter</pre>
         setProgress(0, `Error: ${err.message}`, true, false);
       } finally {
         stopElapsedTimer();
-        processBtn.disabled = false;
+        isProcessing = false;
         processBtn.textContent = 'Mulai Proses';
+        preview15Btn.textContent = 'Coba 15 Detik Pertama';
         cancelBtn.style.display = 'none';
+        updateActionButtonsState();
       }
-    });
+    }
+
+    processBtn.addEventListener('click', () => runProcess(null));
+    preview15Btn.addEventListener('click', () => runProcess(15));
+    processFullAfterPreviewBtn.addEventListener('click', () => runProcess(null));
   </script>
 </body>
 

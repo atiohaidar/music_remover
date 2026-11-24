@@ -16,7 +16,7 @@
     h1 {
       font-size: 16px;
       margin: 0 0 4px 0;
-      color: #38bdf8;
+      color: #4ade80;
     }
 
     .subtitle {
@@ -49,7 +49,7 @@
 
     input[type="range"] {
       width: 100%;
-      accent-color: #38bdf8;
+      accent-color: #22c55e;
     }
 
     button {
@@ -65,12 +65,12 @@
     }
 
     button.start {
-      background: #0284c7;
+      background: #15803d;
       color: #fff;
     }
 
     button.start:hover {
-      background: #0369a1;
+      background: #166534;
     }
 
     button.stop {
@@ -113,10 +113,10 @@
       <span>Model Engine</span>
     </div>
     <select id="engineSelect">
-      <option value="kimvocal">Kim Vocal 2 (44.1kHz · FP32 Original)</option>
-      <option value="kimvocal_fp16">Kim Vocal 2 FP16 (44.1kHz · Hemat GPU ~32MB)</option>
-      <option value="vocft">UVR-MDX-NET Voc_FT (44.1kHz · Natural)</option>
-      <option value="gtcrn">GTCRN (16kHz · No Delay)</option>
+      <option value="kimvocal">Kim Vocal 2 (44.1kHz · FP32, ~64 MB)</option>
+      <option value="kimvocal_fp16">Kim Vocal 2 FP16 (44.1kHz · FP16, ~32 MB)</option>
+      <option value="vocft">UVR-MDX-NET Voc_FT (44.1kHz · FP32, ~64 MB)</option>
+      <option value="gtcrn">GTCRN (16kHz · 523 KB)</option>
     </select>
   </div>
 
@@ -125,8 +125,8 @@
       <span>Mode Eksekusi</span>
     </div>
     <select id="backendSelect">
-      <option value="webgpu" selected>Auto WebGPU + WASM (GPU · Default)</option>
-      <option value="wasm">WebAssembly CPU (Khusus GTCRN)</option>
+      <option value="webgpu" selected>WebGPU + Fallback WASM (GPU / CPU)</option>
+      <option value="wasm">WebAssembly (CPU)</option>
     </select>
   </div>
 

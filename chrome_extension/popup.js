@@ -11,6 +11,54 @@ const statusBox = document.getElementById('statusBox');
 let currentActive = false;
 let initializedFromState = false;
 
+const EXT_MODEL_SOURCES = {
+  gtcrn: {
+    localPath: 'models/gtcrn_simple.onnx',
+    remoteUrl: null,
+  },
+  kimvocal: {
+    localPath: 'models/Kim_Vocal_2.onnx',
+    remoteUrl: 'https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx',
+  },
+  kimvocal_fp16: {
+    localPath: 'models/Kim_Vocal_2_fp16.onnx',
+    remoteUrl: 'https://raw.githubusercontent.com/atiohaidar/music_remover/main/web/models/Kim_Vocal_2_fp16.onnx',
+  },
+  vocft: {
+    localPath: 'models/UVR-MDX-NET-Voc_FT.onnx',
+    remoteUrl: 'https://huggingface.co/aaatmy/uvr-mdx-net-onnx/resolve/main/UVR-MDX-NET-Voc_FT.onnx',
+  },
+};
+
+for (const opt of engineSelect.options) {
+  opt.dataset.baseLabel = opt.textContent;
+}
+
+async function refreshExtensionModelLabels() {
+  let cache = null;
+  if ('caches' in window) {
+    try {
+      cache = await caches.open('music-remover-onnx-v1');
+    } catch (_) { }
+  }
+  for (const opt of engineSelect.options) {
+    const src = EXT_MODEL_SOURCES[opt.value];
+    if (!src) continue;
+    let ready = false;
+    try {
+      const localResp = await fetch(chrome.runtime.getURL(src.localPath), { method: 'HEAD' });
+      if (localResp.ok) ready = true;
+    } catch (_) { }
+    if (!ready && cache && src.remoteUrl) {
+      try {
+        const hit = await cache.match(src.remoteUrl);
+        if (hit) ready = true;
+      } catch (_) { }
+    }
+    opt.textContent = ready ? `${opt.dataset.baseLabel} · ✓` : opt.dataset.baseLabel;
+  }
+}
+
 function updateDelayVisibility() {
   const isGtcrn = engineSelect.value === 'gtcrn';
   delayControl.style.display = isGtcrn ? 'none' : 'block';
@@ -70,16 +118,16 @@ async function refreshStatus(syncInputs = false) {
 
 engineSelect.addEventListener('change', () => {
   updateDelayVisibility();
-  chrome.runtime.sendMessage({ type: 'SET_CONFIG', engine: engineSelect.value }).catch(() => {});
+  chrome.runtime.sendMessage({ type: 'SET_CONFIG', engine: engineSelect.value }).catch(() => { });
 });
 
 backendSelect.addEventListener('change', () => {
-  chrome.runtime.sendMessage({ type: 'SET_CONFIG', backendMode: backendSelect.value }).catch(() => {});
+  chrome.runtime.sendMessage({ type: 'SET_CONFIG', backendMode: backendSelect.value }).catch(() => { });
 });
 
 delaySlider.addEventListener('input', () => {
   delayVal.textContent = `${Number(delaySlider.value).toFixed(1)} s`;
-  chrome.runtime.sendMessage({ type: 'SET_CONFIG', delaySec: Number(delaySlider.value) }).catch(() => {});
+  chrome.runtime.sendMessage({ type: 'SET_CONFIG', delaySec: Number(delaySlider.value) }).catch(() => { });
 });
 
 strengthSlider.addEventListener('input', async () => {
@@ -95,7 +143,7 @@ toggleBtn.addEventListener('click', async () => {
   toggleBtn.disabled = true;
   if (!currentActive) {
     statusBox.className = 'status';
-    statusBox.textContent = 'Loading model (~64 MB) & starting...';
+    statusBox.textContent = 'Menyiapkan model & memulai capture...';
   }
   try {
     if (currentActive) {
@@ -118,6 +166,7 @@ toggleBtn.addEventListener('click', async () => {
       });
       if (resp?.ok) {
         render(resp.state);
+        refreshExtensionModelLabels();
       } else {
         render({ active: false, engine, backendMode, delaySec, strength, error: resp?.error || 'Failed to start' });
       }
@@ -127,6 +176,7 @@ toggleBtn.addEventListener('click', async () => {
   }
 });
 
+refreshExtensionModelLabels();
 refreshStatus(true);
 setInterval(() => {
   if (currentActive) refreshStatus(false);
