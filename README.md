@@ -22,7 +22,13 @@ Mulai versi 2.0+, project ini mendukung **2 cara penggunaan**:
 
 ## 💻 Cara Pakai Python CLI (System Audio)
 
-Bisa langsung double-click `run_python.bat`, atau ikuti langkah manual di bawah ini.
+Bisa langsung double-click `cli/run_python.bat`, atau masuk ke folder `cli/` lalu jalankan manual:
+
+```bash
+cd cli
+pip install -r requirements.txt
+python music_remover.py
+```
 
 ### 1. **DeepFilterNet / Kim Vocal 2 / Voc_FT**:
    - **DTLN**: Sangat ringan, ONNX `16kHz`, latency sangat rendah (~70ms).

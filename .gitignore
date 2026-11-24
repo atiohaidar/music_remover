@@ -1,4 +1,6 @@
 __pycache__/
+cli/__pycache__/
 models/
+cli/models/
 chrome_extension/lib/
 chrome_extension/models/

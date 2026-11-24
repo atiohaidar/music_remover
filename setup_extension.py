@@ -18,7 +18,7 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXT_DIR = os.path.join(ROOT_DIR, "chrome_extension")
 LIB_DIR = os.path.join(EXT_DIR, "lib")
 EXT_MODELS_DIR = os.path.join(EXT_DIR, "models")
-PY_MODELS_DIR = os.path.join(ROOT_DIR, "models")
+PY_MODELS_DIR = os.path.join(ROOT_DIR, "cli", "models")
 
 ORT_VERSION = "1.31.1"
 ORT_BASE_URL = f"https://cdn.jsdelivr.net/npm/onnxruntime-web@{ORT_VERSION}/dist"
